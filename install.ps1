@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Version = "1.0.0"
+$Version = "1.0.1"
 $Repo = "ausboss/ComfyUI-AusBoss-Installer"
 # Released files, not main, so an install only ever gets a tagged version.
 $Raw = "https://github.com/$Repo/releases/latest/download"
