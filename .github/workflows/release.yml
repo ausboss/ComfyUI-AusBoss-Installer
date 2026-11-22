@@ -1,0 +1,27 @@
+name: Release
+# Push a version tag (for example v1.0.1) to publish install.bat and install.sh as release downloads.
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the version matches the tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          grep -q "^VERSION=\"$tag\"" install.sh || { echo "::error::Set VERSION=\"$tag\" in install.sh"; exit 1; }
+          grep -q "^\$Version = \"$tag\"" install.ps1 || { echo "::error::Set \$Version = \"$tag\" in install.ps1"; exit 1; }
+      - name: Lint
+        run: |
+          bash -n install.sh
+          pip install --quiet shellcheck-py
+          shellcheck -S warning install.sh
+          pwsh -NoProfile -Command '$e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile("install.ps1",[ref]$null,[ref]$e); if ($e) { $e; exit 1 }'
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --latest install.bat install.ps1 install.sh nodes.txt

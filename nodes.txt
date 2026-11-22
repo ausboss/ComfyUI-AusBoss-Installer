@@ -1,0 +1,5 @@
+# Node packs the installer puts in ComfyUI/custom_nodes.
+# One per line: the git URL, then (optional) the folder name.
+# Lines starting with # are skipped. ComfyUI-Manager is set up separately.
+
+https://github.com/ausboss/ComfyUI-AusBoss  ComfyUI-AusBoss
