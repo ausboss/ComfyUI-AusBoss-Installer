@@ -11,7 +11,8 @@ set -uo pipefail
 
 VERSION="1.0.0"
 REPO="ausboss/ComfyUI-AusBoss-Installer"
-RAW="https://raw.githubusercontent.com/$REPO/main"
+# Released files, not main, so an install only ever gets a tagged version.
+RAW="https://github.com/$REPO/releases/latest/download"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 NEED_GB=15
 

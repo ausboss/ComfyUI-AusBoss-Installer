@@ -25,7 +25,7 @@ If Windows SmartScreen warns you, click **More info**, then **Run anyway**. If y
 You need `git` and `curl`. In the folder you want ComfyUI in:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/ausboss/ComfyUI-AusBoss-Installer/main/install.sh && bash install.sh
+curl -fsSLO https://github.com/ausboss/ComfyUI-AusBoss-Installer/releases/latest/download/install.sh && bash install.sh
 ```
 
 Then start it with:
@@ -95,10 +95,13 @@ Everything the installer does is written to `install.log` in the install folder.
 
 Run **`Update ComfyUI.bat`** (or `update.sh`). It updates ComfyUI and every pack in `nodes.txt`, then reinstalls their packages. Packs you added through ComfyUI-Manager are updated from the Manager.
 
+Updating also gets the newest installer first, and moves AusBoss folders from an older install (`ComfyUI-AusBoss`) to the names ComfyUI-Manager uses (`ausboss-nodes`), so you never end up with two copies. Close ComfyUI before you update.
+
 ## Troubleshooting
 
 - **"The install path has a space in it"**: move the installer to a path without spaces, such as `C:\AI` or `~/AI`.
 - **Running on the CPU when you have an NVIDIA card**: update your GPU driver, then run the update script.
+- **AusBoss nodes show as missing after updating**: you probably have two copies. Close ComfyUI and run the update script; it turns off the old `custom_nodes/ComfyUI-AusBoss` folder.
 - **A node pack broke something**: delete its folder in `ComfyUI/custom_nodes`, or remove its line from `nodes.txt`.
 - Anything else: [open an issue](https://github.com/ausboss/ComfyUI-AusBoss-Installer/issues).
 
