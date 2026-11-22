@@ -565,9 +565,34 @@ if [ ! -f "$NODES" ]; then
     if [ -f "$SCRIPT_DIR/nodes.txt" ]; then cp "$SCRIPT_DIR/nodes.txt" "$NODES"
     else curl -fsSL "$RAW/nodes.txt" -o "$NODES" || fatal "Could not download the node list."; fi
 fi
+# Earlier installers cloned the AusBoss packs under their GitHub names, but
+# ComfyUI-Manager keeps them under their Registry names. Two folders mean two
+# copies, and an old one can keep loading after every update. An old line in
+# a kept nodes.txt still maps to the new folder.
+registry_folder() {
+    case "$1" in
+        ComfyUI-AusBoss) echo ausboss-nodes ;;
+        ComfyUI-AusBoss-Model-Downloader) echo ausboss-model-downloader ;;
+        *) echo "$1" ;;
+    esac
+}
+# Move an old clone to the Registry folder name. With both folders there,
+# the old one is renamed .disabled, which ComfyUI and ComfyUI-Manager skip;
+# renaming it back undoes it.
+move_old_folder() {
+    local base="$1" old="$2" new="$3"
+    [ "$old" = "$new" ] || [ ! -d "$base/$old" ] && return 0
+    if [ ! -e "$base/$new" ]; then
+        mv "$base/$old" "$base/$new" && echo "Moved custom_nodes/$old to custom_nodes/$new"
+    elif [ ! -e "$base/$old.disabled" ]; then
+        mv "$base/$old" "$base/$old.disabled" && echo "Turned off the second copy: custom_nodes/$old.disabled"
+    fi
+}
 node_get() {
     local url="$1" dest="$2"
-    if [ ! -d "$dest/.git" ]; then git clone --progress --recursive "$url" "$dest" || return 1
+    # A folder without .git is a ComfyUI-Manager install: Manager updates it.
+    if [ -d "$dest" ] && [ ! -d "$dest/.git" ]; then :
+    elif [ ! -d "$dest/.git" ]; then git clone --progress --recursive "$url" "$dest" || return 1
     elif [ "$UPDATE" = 1 ]; then git -C "$dest" pull --ff-only || echo "(could not update, kept the current version)"; fi
     if [ -s "$dest/requirements.txt" ]; then req_install "$dest/requirements.txt" || return 1; fi
     if [ -s "$dest/install.py" ] && [ ! -f "$dest/.installed" ]; then (cd "$dest" && "$PY" install.py) && touch "$dest/.installed"; fi
@@ -577,6 +602,10 @@ PACKS=()
 while read -r url name _; do
     { [ -z "${url:-}" ] || [[ "$url" == \#* ]]; } && continue
     name="${name:-$(basename "$url" .git)}"
+    old_name="$name"; name="$(registry_folder "$name")"
+    for o in "$old_name" "$(basename "$url" .git)"; do
+        move_old_folder "$DIR/ComfyUI/custom_nodes" "$o" "$name" >>"$LOG" 2>&1 || true
+    done
     if task "$name" node_get "$url" "$DIR/ComfyUI/custom_nodes/$name"; then PACKS+=("$name")
     else warn "$name did not install fully (see install.log)"; fi
 done < "$NODES"

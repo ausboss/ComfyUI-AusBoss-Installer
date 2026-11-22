@@ -541,6 +541,24 @@ if (-not (Test-Path $nodes)) {
     if (Test-Path $here) { Copy-Item $here $nodes }
     else { try { Invoke-WebRequest "$Raw/nodes.txt" -OutFile $nodes -UseBasicParsing } catch { Fatal "Could not download the node list." } }
 }
+# Earlier installers cloned the AusBoss packs under their GitHub names, but
+# ComfyUI-Manager keeps them under their Registry names. Two folders mean two
+# copies, and an old one can keep loading after every update. An old line in
+# a kept nodes.txt still maps to the new folder.
+$registryFolder = @{ "ComfyUI-AusBoss" = "ausboss-nodes"; "ComfyUI-AusBoss-Model-Downloader" = "ausboss-model-downloader" }
+# Move an old clone to the Registry folder name. With both folders there,
+# the old one is renamed .disabled, which ComfyUI and ComfyUI-Manager skip;
+# renaming it back undoes it.
+function Move-OldFolder($base, $old, $new) {
+    if ($old -eq $new) { return }
+    $from = Join-Path $base $old
+    if (-not (Test-Path $from)) { return }
+    $to = Join-Path $base $new
+    try {
+        if (-not (Test-Path $to)) { Move-Item $from $to -ErrorAction Stop; Add-Content $script:Log "Moved custom_nodes\$old to custom_nodes\$new" }
+        elseif (-not (Test-Path "$from.disabled")) { Move-Item $from "$from.disabled" -ErrorAction Stop; Add-Content $script:Log "Turned off the second copy: custom_nodes\$old.disabled" }
+    } catch { Warn "Could not move custom_nodes\$old. Close ComfyUI and run the update again." }
+}
 $packs = @()
 foreach ($line in Get-Content $nodes) {
     $line = $line.Trim()
@@ -548,8 +566,15 @@ foreach ($line in Get-Content $nodes) {
     $parts = $line -split '\s+'
     $url = $parts[0]
     if ($parts.Count -gt 1) { $name = $parts[1] } else { $name = [IO.Path]::GetFileNameWithoutExtension($url) }
+    $oldName = $name
+    if ($registryFolder.ContainsKey($name)) { $name = $registryFolder[$name] }
+    foreach ($o in @($oldName, [IO.Path]::GetFileNameWithoutExtension($url)) | Select-Object -Unique) {
+        Move-OldFolder (Join-Path $comfy "custom_nodes") $o $name
+    }
     $target = Join-Path $comfy "custom_nodes\$name"
-    if (-not (Test-Path (Join-Path $target ".git"))) {
+    if ((Test-Path $target) -and -not (Test-Path (Join-Path $target ".git"))) {
+        # A folder without .git is a ComfyUI-Manager install: Manager updates it.
+    } elseif (-not (Test-Path (Join-Path $target ".git"))) {
         if (-not (Task $name $git @("clone", "--progress", "--recursive", $url, $target))) { Warn "Could not download $name"; continue }
     } elseif ($Update) {
         if (-not (Task "Updating $name" $git @("-C", $target, "pull", "--ff-only"))) { Warn "Could not update $name" }
