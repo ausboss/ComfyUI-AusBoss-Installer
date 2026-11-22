@@ -48,8 +48,13 @@ ComfyUI-AusBoss/
 **Nodes it installs:**
 - [ComfyUI-Manager](https://github.com/Comfy-Org/ComfyUI-Manager), so you can install any other pack from inside ComfyUI
 - [ComfyUI-AusBoss](https://github.com/ausboss/ComfyUI-AusBoss): crop/rotate/pad, inpaint and stitch, masks by name or click, tiled upscale, video load/save, notes and callouts, and more
+- [AusBoss Model Downloader](https://github.com/ausboss/ComfyUI-AusBoss-Model-Downloader): paste a Civitai or Hugging Face link and it downloads the model into the right folder. It also adds download buttons to the model rows of Workflow Notes
 
-To add more packs, put a line in `nodes.txt` (`<git url> <folder name>`) and run the update script.
+## Installing more nodes
+
+**From inside ComfyUI:** click **Manager** in the top bar, then **Custom Nodes Manager**. Search for a pack, click **Install** and restart ComfyUI when it asks. When you open a workflow that uses nodes you don't have, **Install Missing Custom Nodes** in the same menu finds and installs them.
+
+**From `nodes.txt`:** add a line (`<git url> <folder name>`) and run the update script. Packs listed there are updated with everything else each time you run it.
 
 ## Picking the GPU build
 

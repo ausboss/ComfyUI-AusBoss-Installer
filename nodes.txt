@@ -3,3 +3,4 @@
 # Lines starting with # are skipped. ComfyUI-Manager is set up separately.
 
 https://github.com/ausboss/ComfyUI-AusBoss  ComfyUI-AusBoss
+https://github.com/ausboss/ComfyUI-AusBoss-Model-Downloader  ComfyUI-AusBoss-Model-Downloader
