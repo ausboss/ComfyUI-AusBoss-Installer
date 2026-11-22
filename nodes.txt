@@ -1,6 +1,8 @@
 # Node packs the installer puts in ComfyUI/custom_nodes.
-# One per line: the git URL, then (optional) the folder name.
+# One per line: the git URL, then (optional) the folder name. The AusBoss
+# packs use their Comfy Registry name as the folder, the same folder
+# ComfyUI-Manager installs and updates, so the two never make a second copy.
 # Lines starting with # are skipped. ComfyUI-Manager is set up separately.
 
-https://github.com/ausboss/ComfyUI-AusBoss  ComfyUI-AusBoss
-https://github.com/ausboss/ComfyUI-AusBoss-Model-Downloader  ComfyUI-AusBoss-Model-Downloader
+https://github.com/ausboss/ComfyUI-AusBoss  ausboss-nodes
+https://github.com/ausboss/ComfyUI-AusBoss-Model-Downloader  ausboss-model-downloader

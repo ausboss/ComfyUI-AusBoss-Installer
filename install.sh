@@ -17,6 +17,7 @@ NEED_GB=15
 
 # ------------------------------------------------------------------ options --
 DIR=""; UPDATE=0; YES=0; DEVICE="auto"; SHORTCUT=1; PLAIN=0
+ARGS=("$@")
 while [ $# -gt 0 ]; do
     case "$1" in
         --update) UPDATE=1 ;;
@@ -32,6 +33,24 @@ while [ $# -gt 0 ]; do
     shift
 done
 case "$DEVICE" in auto|nvidia|amd|intel|cpu) ;; *) echo "Unknown device '$DEVICE' (nvidia, amd, intel or cpu)"; exit 1 ;; esac
+
+# An update first gets the newest released installer, so a fix to the
+# installer itself reaches installs made with an older one. Only a newer
+# script that parses replaces this one; anything else carries on as it is.
+if [ "$UPDATE" = 1 ] && [ -z "${AUSBOSS_INSTALLER_FRESH:-}" ]; then
+    SELF="$(readlink -f "${BASH_SOURCE[0]:-$0}")"
+    if curl -fsSL --max-time 30 "${AUSBOSS_INSTALLER_URL:-https://github.com/$REPO/releases/latest/download/install.sh}" -o "$SELF.new" 2>/dev/null \
+        && bash -n "$SELF.new" 2>/dev/null; then
+        LATEST="$(sed -n 's/^VERSION="\([0-9.]*\)"$/\1/p' "$SELF.new" | head -1)"
+        if [ -n "$LATEST" ] && [ "$LATEST" != "$VERSION" ] \
+            && [ "$(printf '%s\n%s\n' "$VERSION" "$LATEST" | sort -V | tail -1)" = "$LATEST" ]; then
+            mv -f "$SELF.new" "$SELF"
+            echo "Updated the installer from v$VERSION to v$LATEST."
+            AUSBOSS_INSTALLER_FRESH=1 exec bash "$SELF" ${ARGS[@]+"${ARGS[@]}"}
+        fi
+    fi
+    rm -f "$SELF.new"
+fi
 
 # --------------------------------------------------------------------- look --
 COLOR=0; TRUE=0
@@ -565,9 +584,36 @@ if [ ! -f "$NODES" ]; then
     if [ -f "$SCRIPT_DIR/nodes.txt" ]; then cp "$SCRIPT_DIR/nodes.txt" "$NODES"
     else curl -fsSL "$RAW/nodes.txt" -o "$NODES" || fatal "Could not download the node list."; fi
 fi
+# Earlier installers cloned the AusBoss packs under their GitHub names, but
+# ComfyUI-Manager keeps them under their Registry names. Two folders mean two
+# copies, and an old one can keep loading after every update. An old line in
+# a kept nodes.txt still maps to the new folder.
+registry_folder() {
+    case "$1" in
+        ComfyUI-AusBoss) echo ausboss-nodes ;;
+        ComfyUI-AusBoss-Model-Downloader) echo ausboss-model-downloader ;;
+        *) echo "$1" ;;
+    esac
+}
+# Move an old clone to the Registry folder name. With both folders there,
+# the old one is renamed .disabled, which ComfyUI and ComfyUI-Manager skip;
+# renaming it back undoes it.
+move_old_folder() {
+    local base="$1" old="$2" new="$3"
+    [ "$old" = "$new" ] || [ ! -d "$base/$old" ] && return 0
+    if [ ! -e "$base/$new" ]; then
+        mv "$base/$old" "$base/$new" && echo "Moved custom_nodes/$old to custom_nodes/$new"
+    else
+        local off="$old.disabled" n=2
+        while [ -e "$base/$off" ]; do off="$old.$n.disabled"; n=$((n + 1)); done
+        mv "$base/$old" "$base/$off" && echo "Turned off the second copy: custom_nodes/$off"
+    fi
+}
 node_get() {
     local url="$1" dest="$2"
-    if [ ! -d "$dest/.git" ]; then git clone --progress --recursive "$url" "$dest" || return 1
+    # A folder without .git is a ComfyUI-Manager install: Manager updates it.
+    if [ -d "$dest" ] && [ ! -d "$dest/.git" ]; then :
+    elif [ ! -d "$dest/.git" ]; then git clone --progress --recursive "$url" "$dest" || return 1
     elif [ "$UPDATE" = 1 ]; then git -C "$dest" pull --ff-only || echo "(could not update, kept the current version)"; fi
     if [ -s "$dest/requirements.txt" ]; then req_install "$dest/requirements.txt" || return 1; fi
     if [ -s "$dest/install.py" ] && [ ! -f "$dest/.installed" ]; then (cd "$dest" && "$PY" install.py) && touch "$dest/.installed"; fi
@@ -577,6 +623,18 @@ PACKS=()
 while read -r url name _; do
     { [ -z "${url:-}" ] || [[ "$url" == \#* ]]; } && continue
     name="${name:-$(basename "$url" .git)}"
+    old_name="$name"; name="$(registry_folder "$name")"
+    stuck=""
+    for o in "$old_name" "$(basename "$url" .git)"; do
+        move_old_folder "$DIR/ComfyUI/custom_nodes" "$o" "$name" >>"$LOG" 2>&1 || true
+        [ "$o" != "$name" ] && [ -d "$DIR/ComfyUI/custom_nodes/$o" ] && stuck="$o"
+    done
+    # An old folder that could not be moved stays the copy that loads, so
+    # cloning a new one beside it would make two. Leave it for the next run.
+    if [ -n "$stuck" ]; then
+        warn "Could not move custom_nodes/$stuck. Close ComfyUI and run the update again."
+        continue
+    fi
     if task "$name" node_get "$url" "$DIR/ComfyUI/custom_nodes/$name"; then PACKS+=("$name")
     else warn "$name did not install fully (see install.log)"; fi
 done < "$NODES"
