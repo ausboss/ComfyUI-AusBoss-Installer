@@ -20,6 +20,39 @@ $Repo = "ausboss/ComfyUI-AusBoss-Installer"
 $Raw = "https://raw.githubusercontent.com/$Repo/main"
 $NeedGB = 15
 
+# An update first gets the newest released installer, so a fix to the
+# installer itself reaches installs made with an older one. Only a newer
+# script that parses replaces this one; anything else carries on as it is.
+if ($Update -and -not $env:AUSBOSS_INSTALLER_FRESH) {
+    $self = $PSCommandPath
+    $fresh = "$self.new"
+    try {
+        $url = if ($env:AUSBOSS_INSTALLER_URL) { $env:AUSBOSS_INSTALLER_URL } else { "https://github.com/$Repo/releases/latest/download/install.ps1" }
+        Invoke-WebRequest $url -OutFile $fresh -UseBasicParsing -TimeoutSec 30
+        $parseErrors = $null
+        [void][System.Management.Automation.Language.Parser]::ParseFile($fresh, [ref]$null, [ref]$parseErrors)
+        $found = Select-String -Path $fresh -Pattern '^\$Version = "([0-9.]+)"' | Select-Object -First 1
+        if (-not $parseErrors -and $found) {
+            $latest = $found.Matches[0].Groups[1].Value
+            if ([version]$latest -gt [version]$Version) {
+                Move-Item $fresh $self -Force
+                Write-Host "Updated the installer from v$Version to v$latest."
+                $env:AUSBOSS_INSTALLER_FRESH = "1"
+                $again = @("-Update")
+                if ($Dir) { $again += @("-Dir", $Dir) }
+                if ($Yes) { $again += "-Yes" }
+                if ($NoShortcut) { $again += "-NoShortcut" }
+                if ($Plain) { $again += "-Plain" }
+                if ($TorchIndex) { $again += @("-TorchIndex", $TorchIndex) }
+                if ($PythonVersion -ne "3.12") { $again += @("-PythonVersion", $PythonVersion) }
+                & powershell -NoProfile -ExecutionPolicy Bypass -File $self @again
+                exit $LASTEXITCODE
+            }
+        }
+    } catch { }
+    Remove-Item $fresh -ErrorAction SilentlyContinue
+}
+
 # --------------------------------------------------------------------- look --
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 $Fancy = -not [Console]::IsOutputRedirected
@@ -556,8 +589,13 @@ function Move-OldFolder($base, $old, $new) {
     $to = Join-Path $base $new
     try {
         if (-not (Test-Path $to)) { Move-Item $from $to -ErrorAction Stop; Add-Content $script:Log "Moved custom_nodes\$old to custom_nodes\$new" }
-        elseif (-not (Test-Path "$from.disabled")) { Move-Item $from "$from.disabled" -ErrorAction Stop; Add-Content $script:Log "Turned off the second copy: custom_nodes\$old.disabled" }
-    } catch { Warn "Could not move custom_nodes\$old. Close ComfyUI and run the update again." }
+        else {
+            $off = "$from.disabled"; $n = 2
+            while (Test-Path $off) { $off = "$from.$n.disabled"; $n++ }
+            Move-Item $from $off -ErrorAction Stop
+            Add-Content $script:Log "Turned off the second copy: $off"
+        }
+    } catch { Add-Content $script:Log "Could not move custom_nodes\$old`: $_" }
 }
 $packs = @()
 foreach ($line in Get-Content $nodes) {
@@ -568,9 +606,14 @@ foreach ($line in Get-Content $nodes) {
     if ($parts.Count -gt 1) { $name = $parts[1] } else { $name = [IO.Path]::GetFileNameWithoutExtension($url) }
     $oldName = $name
     if ($registryFolder.ContainsKey($name)) { $name = $registryFolder[$name] }
+    $stuck = $null
     foreach ($o in @($oldName, [IO.Path]::GetFileNameWithoutExtension($url)) | Select-Object -Unique) {
         Move-OldFolder (Join-Path $comfy "custom_nodes") $o $name
+        if ($o -ne $name -and (Test-Path (Join-Path $comfy "custom_nodes\$o"))) { $stuck = $o }
     }
+    # An old folder that could not be moved stays the copy that loads, so
+    # cloning a new one beside it would make two. Leave it for the next run.
+    if ($stuck) { Warn "Could not move custom_nodes\$stuck. Close ComfyUI and run the update again."; continue }
     $target = Join-Path $comfy "custom_nodes\$name"
     if ((Test-Path $target) -and -not (Test-Path (Join-Path $target ".git"))) {
         # A folder without .git is a ComfyUI-Manager install: Manager updates it.

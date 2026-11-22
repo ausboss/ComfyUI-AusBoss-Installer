@@ -1,0 +1,20 @@
+name: Lint
+# The same checks as the Release workflow, on every pull request, so a broken
+# install.sh or install.ps1 shows up before it is tagged.
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint
+        run: |
+          bash -n install.sh
+          pip install --quiet shellcheck-py
+          shellcheck -S warning install.sh
+          pwsh -NoProfile -Command '$e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile("install.ps1",[ref]$null,[ref]$e); if ($e) { $e; exit 1 }'

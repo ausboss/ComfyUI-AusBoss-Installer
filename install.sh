@@ -17,6 +17,7 @@ NEED_GB=15
 
 # ------------------------------------------------------------------ options --
 DIR=""; UPDATE=0; YES=0; DEVICE="auto"; SHORTCUT=1; PLAIN=0
+ARGS=("$@")
 while [ $# -gt 0 ]; do
     case "$1" in
         --update) UPDATE=1 ;;
@@ -32,6 +33,24 @@ while [ $# -gt 0 ]; do
     shift
 done
 case "$DEVICE" in auto|nvidia|amd|intel|cpu) ;; *) echo "Unknown device '$DEVICE' (nvidia, amd, intel or cpu)"; exit 1 ;; esac
+
+# An update first gets the newest released installer, so a fix to the
+# installer itself reaches installs made with an older one. Only a newer
+# script that parses replaces this one; anything else carries on as it is.
+if [ "$UPDATE" = 1 ] && [ -z "${AUSBOSS_INSTALLER_FRESH:-}" ]; then
+    SELF="$(readlink -f "${BASH_SOURCE[0]:-$0}")"
+    if curl -fsSL --max-time 30 "${AUSBOSS_INSTALLER_URL:-https://github.com/$REPO/releases/latest/download/install.sh}" -o "$SELF.new" 2>/dev/null \
+        && bash -n "$SELF.new" 2>/dev/null; then
+        LATEST="$(sed -n 's/^VERSION="\([0-9.]*\)"$/\1/p' "$SELF.new" | head -1)"
+        if [ -n "$LATEST" ] && [ "$LATEST" != "$VERSION" ] \
+            && [ "$(printf '%s\n%s\n' "$VERSION" "$LATEST" | sort -V | tail -1)" = "$LATEST" ]; then
+            mv -f "$SELF.new" "$SELF"
+            echo "Updated the installer from v$VERSION to v$LATEST."
+            AUSBOSS_INSTALLER_FRESH=1 exec bash "$SELF" ${ARGS[@]+"${ARGS[@]}"}
+        fi
+    fi
+    rm -f "$SELF.new"
+fi
 
 # --------------------------------------------------------------------- look --
 COLOR=0; TRUE=0
@@ -584,8 +603,10 @@ move_old_folder() {
     [ "$old" = "$new" ] || [ ! -d "$base/$old" ] && return 0
     if [ ! -e "$base/$new" ]; then
         mv "$base/$old" "$base/$new" && echo "Moved custom_nodes/$old to custom_nodes/$new"
-    elif [ ! -e "$base/$old.disabled" ]; then
-        mv "$base/$old" "$base/$old.disabled" && echo "Turned off the second copy: custom_nodes/$old.disabled"
+    else
+        local off="$old.disabled" n=2
+        while [ -e "$base/$off" ]; do off="$old.$n.disabled"; n=$((n + 1)); done
+        mv "$base/$old" "$base/$off" && echo "Turned off the second copy: custom_nodes/$off"
     fi
 }
 node_get() {
@@ -603,9 +624,17 @@ while read -r url name _; do
     { [ -z "${url:-}" ] || [[ "$url" == \#* ]]; } && continue
     name="${name:-$(basename "$url" .git)}"
     old_name="$name"; name="$(registry_folder "$name")"
+    stuck=""
     for o in "$old_name" "$(basename "$url" .git)"; do
         move_old_folder "$DIR/ComfyUI/custom_nodes" "$o" "$name" >>"$LOG" 2>&1 || true
+        [ "$o" != "$name" ] && [ -d "$DIR/ComfyUI/custom_nodes/$o" ] && stuck="$o"
     done
+    # An old folder that could not be moved stays the copy that loads, so
+    # cloning a new one beside it would make two. Leave it for the next run.
+    if [ -n "$stuck" ]; then
+        warn "Could not move custom_nodes/$stuck. Close ComfyUI and run the update again."
+        continue
+    fi
     if task "$name" node_get "$url" "$DIR/ComfyUI/custom_nodes/$name"; then PACKS+=("$name")
     else warn "$name did not install fully (see install.log)"; fi
 done < "$NODES"
