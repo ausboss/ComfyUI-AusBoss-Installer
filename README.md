@@ -1,10 +1,14 @@
 # ComfyUI AusBoss Installer
 
+![ComfyUI AusBoss Installer](docs/splash.png)
+
 One script that installs **ComfyUI**, **ComfyUI-Manager** and the **[AusBoss nodes](https://github.com/ausboss/ComfyUI-AusBoss)** into a single portable folder, with its own Python. It doesn't touch your system Python, and you can delete the folder to remove everything.
 
 Works on **Windows** and **Linux**, with **NVIDIA**, **AMD** (Linux) and **Intel Arc** GPUs.
 
-![The installer](docs/installer.png)
+While it works, it shows each step, what it's downloading and how far along it is:
+
+![The installer partway through an install](docs/installer.png)
 
 ## Install
 
