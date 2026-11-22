@@ -15,9 +15,10 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Version = "1.0.0"
+$Version = "1.0.1"
 $Repo = "ausboss/ComfyUI-AusBoss-Installer"
-$Raw = "https://raw.githubusercontent.com/$Repo/main"
+# Released files, not main, so an install only ever gets a tagged version.
+$Raw = "https://github.com/$Repo/releases/latest/download"
 $NeedGB = 15
 
 # An update first gets the newest released installer, so a fix to the
