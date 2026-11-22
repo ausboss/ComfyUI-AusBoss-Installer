@@ -87,6 +87,140 @@ header() {
     printf '  %s   %s%s%s\n' "$L2C" "$muted" "$1" "$reset"
 }
 
+# ---------------------------------------------------------------- the mark --
+# The AusBoss mark as pixels: t is teal, a is amber. Each character cell shows two pixels with half blocks.
+# shellcheck disable=SC2034  # read through a name reference
+MARK_BIG=(
+    "....................t..............."
+    "....................tt.............."
+    "...................ttt.............."
+    "..................ttttt............."
+    "..................tttttt............"
+    ".................ttttttt............"
+    "................tttt.tttt..........."
+    "................tttt..tttt.........."
+    "...............tttt....ttt.........."
+    "..............tttt.....tttt........."
+    "..............tttt......ttt........."
+    ".............tttt...aa...ttt........"
+    ".............ttt...aaa...tttt......."
+    "............tttt...aaaa...ttt......."
+    "...........tttt...aaaaaa..tttt......"
+    "...........ttt...aaaaaaa...ttt......"
+    "..........tttt.............ttt......"
+    ".........tttt.............ttt......."
+    ".........ttt....tttttttttttttttt...."
+    "........tttt...tttttttttttttttttt..."
+    ".......tttt....ttttttttttttttttttt.."
+    ".......tttt...................tttt.."
+    "......tttt.....................tttt."
+    ".....tttt...aaaaaaaaaaaaaaaa...ttttt"
+    ".....tttt...aaaaaaaaaaaaaaa....ttttt"
+    "....tttt...aaaaaaaaaaaaaaa....ttttt."
+    "....ttt....aaaaaaaaaaaaaa....ttttt.."
+    "...tttt......................ttttt.."
+    "..tttt......................ttttt..."
+    "..tttttttttttttttttttttttttttttt...."
+    ".tttttttttttttttttttttttttttttt....."
+    "ttttttttttttttttttttttttttttttt....."
+)
+# shellcheck disable=SC2034
+MARK_SMALL=(
+    "............t........."
+    "............tt........"
+    "...........ttt........"
+    "..........ttttt......."
+    "..........tt.ttt......"
+    ".........tt...tt......"
+    "........ttt....tt....."
+    "........tt..a..tt....."
+    ".......ttt.aaa..tt...."
+    ".......tt..aaaa.tt...."
+    "......tt........tt...."
+    ".....ttt..tttttttttt.."
+    ".....tt..ttttttttttt.."
+    "....tt............ttt."
+    "...ttt..aaaaaaaaa..ttt"
+    "...tt..aaaaaaaaa...ttt"
+    "..ttt..aaaaaaaaa..ttt."
+    "..tt.............ttt.."
+    ".ttttttttttttttttttt.."
+    "ttttttttttttttttttt..."
+)
+MARKS=0
+[ "$COLOR" = 1 ] && [ "$U" = 1 ] && [ "$PLAIN" = 0 ] && MARKS=1
+if [ "$TRUE" = 1 ]; then
+    PX_T="0;190;178"; PX_TL="170;250;240"; PX_A="245;181;61"; PX_AL="255;230;155"; PX_FG="38;2;"; PX_BG="48;2;"
+else
+    PX_T=37; PX_TL=123; PX_A=214; PX_AL=229; PX_FG="38;5;"; PX_BG="48;5;"
+fi
+SHIM=-99; LIT_ALL=0; MLINES=()
+# The colour of pixel $1 at x=$2, y=$3. Pixels inside the moving highlight (a diagonal band at SHIM) are lit.
+px() {
+    local lit=$LIT_ALL d
+    if [ "$SHIM" -gt -99 ]; then d=$(($2 + $3 - SHIM)); [ $d -ge 0 ] && [ $d -lt 4 ] && lit=1; fi
+    if [ "$1" = t ]; then
+        if [ "$lit" = 1 ]; then PX=$PX_TL; else PX=$PX_T; fi
+    else
+        if [ "$lit" = 1 ]; then PX=$PX_AL; else PX=$PX_A; fi
+    fi
+}
+# Turn the pixel array named $1 into lines of text in MLINES
+mark_lines() {
+    local -n m=$1
+    local y x a b pa line r1 r2 nobg=$'\e[49m'
+    MLINES=()
+    for ((y = 0; y < ${#m[@]}; y += 2)); do
+        line=""; r1="${m[y]}"; r2="${m[y + 1]}"
+        for ((x = 0; x < ${#r1}; x++)); do
+            a="${r1:x:1}"; b="${r2:x:1}"
+            if [ "$a" = . ] && [ "$b" = . ]; then line+=" "
+            elif [ "$a" = . ]; then px "$b" "$x" $((y + 1)); line+=$'\e['"$PX_FG${PX}m▄"
+            elif [ "$b" = . ]; then px "$a" "$x" "$y"; line+=$'\e['"$PX_FG${PX}m▀"
+            else
+                px "$a" "$x" "$y"; pa=$PX; px "$b" "$x" $((y + 1))
+                if [ "$pa" = "$PX" ]; then line+=$'\e['"$PX_FG${pa}m█"
+                else line+=$'\e['"$PX_FG$pa;$PX_BG${PX}m▀$nobg"; fi
+            fi
+        done
+        MLINES+=("$line$reset")
+    done
+}
+# The opening: the mark draws in from the top, a highlight sweeps across it and the name appears beside it
+splash() {
+    if [ "$MARKS" = 0 ] || [ "$COLS" -lt 56 ]; then header "$1"; return; fi
+    local name=MARK_BIG
+    { [ "$COLS" -lt 84 ] || [ "$ROWS" -lt 30 ]; } && name=MARK_SMALL
+    local -n mk=$name
+    local n=$((${#mk[@]} / 2)) w=${#mk[0]} r f mid txt frames=20
+    SHIM=-99; LIT_ALL=0; mark_lines "$name"; local -a N=("${MLINES[@]}")
+    LIT_ALL=1; mark_lines "$name"; local -a L=("${MLINES[@]}"); LIT_ALL=0
+    local -a RT=(); for ((r = 0; r < n; r++)); do RT+=(""); done
+    mid=$((n / 2 - 2))
+    RT[mid]="$L1C"; RT[mid + 1]="$L2C"; RT[mid + 3]="${bold}${ink}ComfyUI Installer${reset}"; RT[mid + 4]="${muted}$1${reset}"
+    echo
+    if [ -t 1 ] && [ -z "${NO_ANIM:-}" ]; then
+        printf '\e[?25l'
+        for ((r = 0; r < n; r++)); do
+            [ $r -gt 0 ] && printf '\e[1A\r  %s\e[K\n' "${N[r - 1]}"
+            printf '  %s\e[K\n' "${L[r]}"; sleep 0.03
+        done
+        for ((f = 0; f <= frames; f++)); do
+            SHIM=$((f * (w + 2 * n + 6) / frames - 5)); mark_lines "$name"
+            printf '\e[%dA' "$n"
+            for ((r = 0; r < n; r++)); do
+                txt=""
+                # each line of the name appears a moment after the one above it
+                [ -n "${RT[r]}" ] && [ $f -ge $(((r - mid) * 3 + 3)) ] && txt="${RT[r]}"
+                printf '\r  %s    %s\e[K\n' "${MLINES[r]}" "$txt"
+            done
+            sleep 0.035
+        done
+        SHIM=-99; printf '\e[%dA\e[?25h' "$n"
+    fi
+    for ((r = 0; r < n; r++)); do printf '\r  %s    %s\e[K\n' "${N[r]}" "${RT[r]}"; done
+}
+
 # A box with a title and "key|value" rows
 card() {
     local title="$1" color="$2"; shift 2
@@ -117,15 +251,16 @@ step_icon() {
         *)    printf '%s%s%s' "$faint" "$TODO" "$reset" ;;
     esac
 }
+SL_IND="    "; SL_DW=0
 step_lines() {
-    local i name det
+    local i name det dw=$((W - 26)); [ "$SL_DW" -gt 0 ] && dw=$SL_DW
     for i in "${!STEPS[@]}"; do
         name="${STEPS[$i]}"; det="${DETAIL[$i]}"
         [ "${STATE[$i]}" = run ] && [ -n "$TASK_LABEL" ] && det="$TASK_LABEL  $((SECONDS - TASK_T0))s"
         case "${STATE[$i]}" in
-            todo) printf '    %s  %s%-18s%s\n' "$(step_icon "$i")" "$faint" "$name" "$reset" ;;
-            run)  printf '    %s  %s%s%-18s%s %s%s%s\n' "$(step_icon "$i")" "$bold" "$ink" "$name" "$reset" "$teal" "$(fit "$det" $((W - 26)))" "$reset" ;;
-            *)    printf '    %s  %s%-18s%s %s%s%s\n' "$(step_icon "$i")" "$ink" "$name" "$reset" "$muted" "$(fit "$det" $((W - 26)))" "$reset" ;;
+            todo) printf '%s%s  %s%-18s%s\n' "$SL_IND" "$(step_icon "$i")" "$faint" "$name" "$reset" ;;
+            run)  printf '%s%s  %s%s%-18s%s %s%s%s\n' "$SL_IND" "$(step_icon "$i")" "$bold" "$ink" "$name" "$reset" "$teal" "$(fit "$det" "$dw")" "$reset" ;;
+            *)    printf '%s%s  %s%-18s%s %s%s%s\n' "$SL_IND" "$(step_icon "$i")" "$ink" "$name" "$reset" "$muted" "$(fit "$det" "$dw")" "$reset" ;;
         esac
     done
 }
@@ -156,12 +291,23 @@ render() {
     size
     local buf="" logn i line w=$((W - 4))
     buf+=$'\e[H'
-    buf+="$(header "v$VERSION $DOT $GPU_SHORT")"$'\n\n'
-    buf+="$(step_lines)"$'\n'
+    if [ "$MARKS" = 1 ] && [ "$COLS" -ge 72 ]; then
+        # the mark on the left, a highlight passing over it now and then; the name and the steps beside it
+        SHIM=$((FRAME % 80 - 12)); mark_lines MARK_SMALL; SHIM=-99
+        local -a top=("${bold}${ink}ComfyUI Installer${reset}" "${muted}v$VERSION $DOT $GPU_SHORT${reset}" "")
+        local -a sl=()
+        SL_IND=""; SL_DW=$((COLS - 51)); [ $SL_DW -gt 50 ] && SL_DW=50; mapfile -t sl < <(step_lines); SL_IND="    "; SL_DW=0
+        top+=("${sl[@]}")
+        buf+=$'\n'
+        for ((i = 0; i < ${#MLINES[@]}; i++)); do buf+="  ${MLINES[i]}   ${top[i]:-}"$'\n'; done
+    else
+        buf+="$(header "v$VERSION $DOT $GPU_SHORT")"$'\n\n'
+        buf+="$(step_lines)"$'\n'
+    fi
     for i in "${WARNINGS[@]+"${WARNINGS[@]}"}"; do buf+="    ${amber}! $(fit "$i" $((W - 6)))${reset}"$'\n'; done
     buf+=$'\n'
     # live output panel, as tall as the window allows
-    logn=$((ROWS - 4 - 2 - ${#STEPS[@]} - ${#WARNINGS[@]} - 6)); [ $logn -gt 10 ] && logn=10; [ $logn -lt 2 ] && logn=2
+    logn=$((ROWS - 4 - 3 - ${#STEPS[@]} - ${#WARNINGS[@]} - 6)); [ $logn -gt 10 ] && logn=10; [ $logn -lt 2 ] && logn=2
     buf+="  ${faint}${TL}${H} ${reset}${muted}output${reset} ${faint}$(rep "$H" $((W - 11)))${TR}${reset}"$'\n'
     local -a lines=()
     mapfile -t lines < <(tail -n 40 "$LOG" 2>/dev/null | tr '\r' '\n' | strip | grep -v '^\(---\|===\)' | sed 's/^[[:space:]]*//' | grep . | tail -n "$logn")
@@ -335,7 +481,7 @@ SAVED_INDEX="$(cat "$DIR/tools/torch-index" 2>/dev/null || true)"
 TORCH_INDEX="${TORCH_INDEX:-${SAVED_INDEX:-$AUTO_INDEX}}"
 FREE_GB=$(( $(df -Pk "$DIR" | awk 'NR==2{print $4}') / 1048576 ))
 
-header "v$VERSION $DOT Linux"
+splash "v$VERSION $DOT Linux"
 echo
 rows=("Folder|$DIR" "GPU|${GPU_NAME:-unknown}" "|$GPU_INFO" "PyTorch|$TORCH_INDEX build" "Python|$PYTHON_VERSION" "Free space|$FREE_GB GB")
 if [ "$UPDATE" = 1 ]; then card "Updating" "$teal" "${rows[@]}"; else card "Ready to install" "$teal" "${rows[@]}"; fi

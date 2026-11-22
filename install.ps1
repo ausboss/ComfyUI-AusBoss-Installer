@@ -64,10 +64,118 @@ function LogoRow($row) {
 $Logo1 = LogoRow "_^# # # #^ #__ #^# #^ #^"; $Logo2 = LogoRow "#^# #_# _# #_# #_# _# _#"
 function HeaderLines($sub) {
     return @(
-        @(""),
+        @("", "Gray"),
         @("  ", $Ink, $Logo1, $Bright, "   ComfyUI Installer", $Ink),
         @("  ", $Ink, $Logo2, $Teal, "   $sub", $Muted)
     )
+}
+
+
+# ---------------------------------------------------------------- the mark --
+# The AusBoss mark as pixels: t is teal, a is amber. Each character cell shows two pixels with half blocks.
+$MarkBig = @(
+    "....................t...............",
+    "....................tt..............",
+    "...................ttt..............",
+    "..................ttttt.............",
+    "..................tttttt............",
+    ".................ttttttt............",
+    "................tttt.tttt...........",
+    "................tttt..tttt..........",
+    "...............tttt....ttt..........",
+    "..............tttt.....tttt.........",
+    "..............tttt......ttt.........",
+    ".............tttt...aa...ttt........",
+    ".............ttt...aaa...tttt.......",
+    "............tttt...aaaa...ttt.......",
+    "...........tttt...aaaaaa..tttt......",
+    "...........ttt...aaaaaaa...ttt......",
+    "..........tttt.............ttt......",
+    ".........tttt.............ttt.......",
+    ".........ttt....tttttttttttttttt....",
+    "........tttt...tttttttttttttttttt...",
+    ".......tttt....ttttttttttttttttttt..",
+    ".......tttt...................tttt..",
+    "......tttt.....................tttt.",
+    ".....tttt...aaaaaaaaaaaaaaaa...ttttt",
+    ".....tttt...aaaaaaaaaaaaaaa....ttttt",
+    "....tttt...aaaaaaaaaaaaaaa....ttttt.",
+    "....ttt....aaaaaaaaaaaaaa....ttttt..",
+    "...tttt......................ttttt..",
+    "..tttt......................ttttt...",
+    "..tttttttttttttttttttttttttttttt....",
+    ".tttttttttttttttttttttttttttttt.....",
+    "ttttttttttttttttttttttttttttttt....."
+)
+$MarkSmall = @(
+    "............t.........",
+    "............tt........",
+    "...........ttt........",
+    "..........ttttt.......",
+    "..........tt.ttt......",
+    ".........tt...tt......",
+    "........ttt....tt.....",
+    "........tt..a..tt.....",
+    ".......ttt.aaa..tt....",
+    ".......tt..aaaa.tt....",
+    "......tt........tt....",
+    ".....ttt..tttttttttt..",
+    ".....tt..ttttttttttt..",
+    "....tt............ttt.",
+    "...ttt..aaaaaaaaa..ttt",
+    "...tt..aaaaaaaaa...ttt",
+    "..ttt..aaaaaaaaa..ttt.",
+    "..tt.............ttt..",
+    ".ttttttttttttttttttt..",
+    "ttttttttttttttttttt..."
+)
+$UseMark = $Fancy -and -not $Plain
+$Upper = C 0x2580; $Lower = C 0x2584; $Block = C 0x2588
+function PxC($p) { if ($p -eq 't') { return "DarkCyan" } elseif ($p -eq 'a') { return "Yellow" } return $null }
+# Lines of the mark, each a list of (text, foreground, background) runs
+function MarkLines($m) {
+    $out = @()
+    for ($y = 0; $y -lt $m.Count; $y += 2) {
+        $segs = New-Object System.Collections.ArrayList
+        $r1 = $m[$y]; $r2 = $m[$y + 1]; $cur = $null
+        for ($x = 0; $x -lt $r1.Length; $x++) {
+            $fa = PxC ([string]$r1[$x]); $fb = PxC ([string]$r2[$x]); $bg = $null
+            if (-not $fa -and -not $fb) { $ch = " "; $fg = "Gray" }
+            elseif (-not $fa) { $ch = $Lower; $fg = $fb }
+            elseif (-not $fb) { $ch = $Upper; $fg = $fa }
+            elseif ($fa -eq $fb) { $ch = $Block; $fg = $fa }
+            else { $ch = $Upper; $fg = $fa; $bg = $fb }
+            if ($cur -and $cur[1] -eq $fg -and $cur[2] -eq $bg) { $cur[0] += $ch }
+            else { $cur = @($ch, $fg, $bg); [void]$segs.Add($cur) }
+        }
+        $out += , ($segs.ToArray())
+    }
+    return , $out
+}
+function WriteMark($line) {
+    foreach ($sg in $line) {
+        if ($sg[2]) { Write-Host $sg[0] -ForegroundColor $sg[1] -BackgroundColor $sg[2] -NoNewline }
+        else { Write-Host $sg[0] -ForegroundColor $sg[1] -NoNewline }
+    }
+}
+$script:SmallMark = $null
+# The opening: the mark draws in from the top with the name beside it
+function Splash($sub, [switch]$Small, [switch]$Still) {
+    if (-not $UseMark -or $script:Cols -lt 56) { foreach ($l in (HeaderLines $sub)) { Say $l }; return }
+    $m = $MarkBig
+    if ($Small -or $script:Cols -lt 84 -or $script:Rows -lt 30) { $m = $MarkSmall }
+    $ml = MarkLines $m
+    $n = $ml.Count; $mid = [int][Math]::Floor($n / 2) - 2
+    $rt = @{}
+    $rt[$mid] = @($Logo1, $Bright); $rt[$mid + 1] = @($Logo2, $Teal)
+    $rt[$mid + 3] = @("ComfyUI Installer", $Ink); $rt[$mid + 4] = @($sub, $Muted)
+    Write-Host ""
+    for ($r = 0; $r -lt $n; $r++) {
+        Write-Host "  " -NoNewline; WriteMark $ml[$r]
+        if ($rt.ContainsKey($r)) { Write-Host "    " -NoNewline; Write-Host $rt[$r][0] -ForegroundColor $rt[$r][1] -NoNewline }
+        Write-Host ""
+        if (-not $Still) { Start-Sleep -Milliseconds 25 }
+    }
 }
 
 function Card($title, $color, [string[]]$rows) {
@@ -89,19 +197,20 @@ $script:Cur = -1; $script:StepSw = $null; $script:T0 = [Diagnostics.Stopwatch]::
 $script:TaskLabel = ""; $script:TaskSw = $null; $script:Frame = 0; $script:Live = @()
 $script:Warnings = @(); $script:Log = $null; $script:GpuShort = "Windows"; $script:Drawn = 0
 
-function StepLines {
+function StepLines($ind = "    ", $dw = 0) {
+    if ($dw -le 0) { $dw = $W - 26 }
     $out = @()
     for ($i = 0; $i -lt $Steps.Count; $i++) {
         $name = $Steps[$i].PadRight(19); $det = $script:Detail[$i]
         switch ($script:State[$i]) {
-            "done" { $out += , @("    ", $Ink, $OkC, $Green, "  $name", $Ink, (Fit $det ($W - 26)), $Muted) }
-            "warn" { $out += , @("    ", $Ink, "!", $Amber, "  $name", $Ink, (Fit $det ($W - 26)), $Muted) }
-            "fail" { $out += , @("    ", $Ink, $BadC, $Rust, "  $name", $Ink, (Fit $det ($W - 26)), $Muted) }
+            "done" { $out += , @($ind, $Ink, $OkC, $Green, "  $name", $Ink, (Fit $det $dw), $Muted) }
+            "warn" { $out += , @($ind, $Ink, "!", $Amber, "  $name", $Ink, (Fit $det $dw), $Muted) }
+            "fail" { $out += , @($ind, $Ink, $BadC, $Rust, "  $name", $Ink, (Fit $det $dw), $Muted) }
             "run" {
                 if ($script:TaskLabel) { $det = "{0}  {1}s" -f $script:TaskLabel, [int]$script:TaskSw.Elapsed.TotalSeconds }
-                $out += , @("    ", $Ink, $Spin[$script:Frame % $Spin.Count], $Bright, "  $name", $Ink, (Fit $det ($W - 26)), $Bright)
+                $out += , @($ind, $Ink, $Spin[$script:Frame % $Spin.Count], $Bright, "  $name", $Ink, (Fit $det $dw), $Bright)
             }
-            default { $out += , @("    ", $Ink, $TodoC, $Faint, "  $name", $Faint) }
+            default { $out += , @($ind, $Ink, $TodoC, $Faint, "  $name", $Faint) }
         }
     }
     return $out
@@ -144,36 +253,63 @@ function Render {
     if (-not $script:Dash) { return }
     Size
     $lines = @()
-    $lines += HeaderLines "v$Version $Dot $($script:GpuShort)"
-    $lines += , @("")
-    $lines += StepLines
-    foreach ($w in $script:Warnings) { $lines += , @("    ! " + (Fit $w ($W - 6)), $Amber) }
-    $lines += , @("")
-    $n = [Math]::Max(2, [Math]::Min(10, $script:Rows - $lines.Count - 7))
+    $marked = $UseMark -and $script:Cols -ge 72
+    if ($marked) {
+        # the mark on the left, the name and the steps beside it
+        if (-not $script:SmallMark) { $script:SmallMark = MarkLines $MarkSmall }
+        $top = @(@("ComfyUI Installer", $Ink), @("v$Version $Dot $($script:GpuShort)", $Muted), @("", "Gray"))
+        $top += StepLines "" ([Math]::Min(50, $script:Cols - 51))
+        $lines += , @("", "Gray")
+    } else {
+        $lines += HeaderLines "v$Version $Dot $($script:GpuShort)"
+        $lines += , @("", "Gray")
+        $lines += StepLines
+    }
+    $after = @()
+    foreach ($w in $script:Warnings) { $after += , @("    ! " + (Fit $w ($W - 6)), $Amber) }
+    $after += , @("", "Gray")
+    $used = $lines.Count + $after.Count
+    if ($marked) { $used += 10 }
+    $n = [Math]::Max(2, [Math]::Min(10, $script:Rows - $used - 7))
+    $lines = @($lines)
     $iw = $W - 4
-    $lines += , @("  $TL$H ", $Faint, "output", $Muted, (" " + (Rep $H ($W - 11)) + $TR), $Faint)
+    $after += , @("  $TL$H ", $Faint, "output", $Muted, (" " + (Rep $H ($W - 11)) + $TR), $Faint)
     $live = @(LiveLines $n)
     for ($i = 0; $i -lt $n; $i++) {
         $t = ""; if ($i -lt $live.Count) { $t = Fit $live[$i] $iw }
-        $lines += , @("  $V ", $Faint, $t.PadRight($iw), $Muted, " $V", $Faint)
+        $after += , @("  $V ", $Faint, $t.PadRight($iw), $Muted, " $V", $Faint)
     }
-    $lines += , @(("  " + $BL + (Rep $H ($W - 2)) + $BR), $Faint)
-    $lines += , @("")
-    $lines += , (BarLine)
+    $after += , @(("  " + $BL + (Rep $H ($W - 2)) + $BR), $Faint)
+    $after += , @("", "Gray")
+    $after += , (BarLine)
     try { [Console]::SetCursorPosition(0, 0) } catch { }
+    $count = 0
     foreach ($l in $lines) {
         $len = 0
         for ($i = 0; $i -lt $l.Count; $i += 2) { Write-Host $l[$i] -ForegroundColor $l[$i + 1] -NoNewline; $len += "$($l[$i])".Length }
-        Write-Host (Rep " " ($script:Cols - 1 - $len))
+        Write-Host (Rep " " ($script:Cols - 1 - $len)); $count++
     }
-    for ($i = $lines.Count; $i -lt $script:Drawn; $i++) { Write-Host (Rep " " ($script:Cols - 1)) }
-    $script:Drawn = $lines.Count
+    if ($marked) {
+        for ($r = 0; $r -lt $script:SmallMark.Count; $r++) {
+            Write-Host "  " -NoNewline; WriteMark $script:SmallMark[$r]; Write-Host "   " -NoNewline
+            $len = 27; $l = @("", "Gray"); if ($r -lt $top.Count) { $l = $top[$r] }
+            for ($i = 0; $i -lt $l.Count; $i += 2) { Write-Host $l[$i] -ForegroundColor $l[$i + 1] -NoNewline; $len += "$($l[$i])".Length }
+            Write-Host (Rep " " ($script:Cols - 1 - $len)); $count++
+        }
+    }
+    foreach ($l in $after) {
+        $len = 0
+        for ($i = 0; $i -lt $l.Count; $i += 2) { Write-Host $l[$i] -ForegroundColor $l[$i + 1] -NoNewline; $len += "$($l[$i])".Length }
+        Write-Host (Rep " " ($script:Cols - 1 - $len)); $count++
+    }
+    for ($i = $count; $i -lt $script:Drawn; $i++) { Write-Host (Rep " " ($script:Cols - 1)) }
+    $script:Drawn = $count
 }
 function DashOn { if ($script:Dash) { Clear-Host; try { [Console]::CursorVisible = $false } catch { } } }
 function DashOff { if ($script:Dash) { Clear-Host; try { [Console]::CursorVisible = $true } catch { }; $script:Dash = $false } }
 function Report {
-    # Clear-Host took the first card away, so draw the header again
-    foreach ($l in (HeaderLines "v$Version $Dot $($script:GpuShort)")) { Say $l }
+    # Clear-Host took the first card away, so draw the mark and the name again
+    Splash "v$Version $Dot $($script:GpuShort)" -Small -Still
     Write-Host ""
     foreach ($l in (StepLines)) { Say $l }
     foreach ($w in $script:Warnings) { Say @("    ! $w", $Amber) }
@@ -293,7 +429,7 @@ if (Test-Path $savedFile) { $saved = (Get-Content $savedFile -TotalCount 1).Trim
 if (-not $TorchIndex) { if ($saved) { $TorchIndex = $saved } else { $TorchIndex = $Auto } }
 $FreeGB = [int]((Get-PSDrive ($Dir.Substring(0, 1))).Free / 1GB)
 
-foreach ($l in (HeaderLines "v$Version $Dot Windows")) { Say $l }
+Splash "v$Version $Dot Windows"
 Write-Host ""
 $rows = @("Folder|$Dir", "GPU|$GpuName", "|$GpuInfo", "PyTorch|$TorchIndex build", "Python|$PythonVersion", "Free space|$FreeGB GB")
 if ($Update) { Card "Updating" $Teal $rows } else { Card "Ready to install" $Teal $rows }
