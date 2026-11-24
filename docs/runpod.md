@@ -20,9 +20,10 @@ When the pod shows **Running**, click **Connect**, then **HTTP Service → :8188
 ## 3. Install the AusBoss nodes
 
 1. Click **Manager** in the top bar, then **Custom Nodes Manager**.
-2. Search for **AusBoss**.
-3. Click **Install** on **ComfyUI-AusBoss** and on **AusBoss Model Downloader**.
-4. Click **Restart** when the Manager asks, then reload the page.
+2. Search for **AusBoss**. You should see two rows, **AusBoss** and **AusBoss Model Downloader**. If only one shows up, the Manager is still loading the Registry a few minutes after the pod started: close the window, wait a minute and open it again.
+3. Click **Install** on **AusBoss**. Leave **latest** selected and click **Select**.
+4. Click **Install** on **AusBoss Model Downloader**, pick **0.2.1** in the list and click **Select**. Don't take **nightly** here: on a pod the Manager only allows numbered versions of this pack and stops with a "security level" error.
+5. Click **Restart** at the bottom of the window and **Confirm**. Wait for ComfyUI to come back, then reload the page.
 
 Double-click the canvas and search for **AusBoss** to check the nodes are there.
 
