@@ -34,7 +34,7 @@ Do this once; every pod after that is two clicks.
 ### Start a pod
 
 1. **Pods → Deploy**, pick a GPU, **Change Template**, and pick yours. Use the `cuda13.0` template for a Blackwell card.
-2. **Deploy On-Demand.** The first start on a host downloads the image, which takes a few minutes. ComfyUI then starts right away, with nothing to install.
+2. **Deploy On-Demand.** The first pod on a machine downloads the image (about 6 GB). That took 5 minutes on a fast host and 36 on a slow one in our tests; the pod shows no logs from ComfyUI until it's done. After that, ComfyUI answers about 30 seconds after the pod starts, with nothing to install, and a stopped pod resumes just as fast.
 3. **Connect → HTTP Service → :8188**, paste your token, and you're in. The browser remembers it for 30 days.
 
 If you deploy without `COMFYUI_TOKEN`, the pod makes a token, prints it in the pod's logs and saves it in `/workspace/ausboss/.comfyui_token`.
