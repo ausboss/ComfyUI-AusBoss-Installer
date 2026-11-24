@@ -434,7 +434,9 @@ if [ "$UPDATE" = 1 ]; then DIR="${DIR:-$SCRIPT_DIR}"; else DIR="${DIR:-$PWD/Comf
 GPU_SHORT="Linux"
 
 [ "$(uname -s)" = Linux ] || fatal "This installer is for Linux." "On Windows run install.bat instead."
-[ "$(id -u)" -eq 0 ] && fatal "Don't run the installer as root or with sudo." "Run it as your normal user: bash install.sh"
+# Cloud GPU containers such as RunPod only have root, so root is fine there.
+IN_CONTAINER=0; { [ -n "${RUNPOD_POD_ID:-}" ] || [ -f /.dockerenv ] || [ -f /run/.containerenv ]; } && IN_CONTAINER=1
+[ "$(id -u)" -eq 0 ] && [ "$IN_CONTAINER" = 0 ] && fatal "Don't run the installer as root or with sudo." "Run it as your normal user: bash install.sh"
 case "$DIR" in *" "*) fatal "The install path has a space in it." "Pick a folder without spaces, like ~/AI." ;; esac
 mkdir -p "$DIR" 2>/dev/null || fatal "Can't create $DIR" "Pick a folder you own, like ~/AI."
 DIR="$(cd "$DIR" && pwd)"
@@ -654,6 +656,12 @@ if [ -f "$SCRIPT_DIR/install.sh" ] && [ "$SCRIPT_DIR" != "$DIR" ]; then cp "$SCR
 elif [ "$SCRIPT_DIR" != "$DIR" ]; then curl -fsSL "$RAW/install.sh" -o "$DIR/install.sh.new" || true; fi
 # a new file, not an overwrite, so a running copy keeps reading its old one
 [ -s "$DIR/install.sh.new" ] && mv -f "$DIR/install.sh.new" "$DIR/install.sh"
+# On RunPod there's no browser to open, and its proxy needs ComfyUI on every address.
+OPEN_URL="http://127.0.0.1:8188"
+if [ -n "${RUNPOD_POD_ID:-}" ]; then
+    OPEN_URL="https://$RUNPOD_POD_ID-8188.proxy.runpod.net"
+    [ -f "$DIR/extra_args.txt" ] || printf '%s\n' "# Extra ComfyUI startup options. --listen lets RunPod's proxy reach ComfyUI." "--listen 0.0.0.0" > "$DIR/extra_args.txt"
+fi
 [ -f "$DIR/extra_args.txt" ] || printf '%s\n' "# Extra ComfyUI startup options. Remove --auto-launch to stop the browser opening." "--auto-launch" > "$DIR/extra_args.txt"
 
 cat > "$DIR/start.sh.new" <<EOF
@@ -710,7 +718,7 @@ T=$((SECONDS - T0))
 dash_off
 report
 echo
-rows=("Took|$((T / 60))m $((T % 60))s" "Start|$DIR/start.sh" "Open|http://127.0.0.1:8188" "Models|$DIR/ComfyUI/models" "Update|$DIR/update.sh" "Log|$LOG")
+rows=("Took|$((T / 60))m $((T % 60))s" "Start|$DIR/start.sh" "Open|$OPEN_URL" "Models|$DIR/ComfyUI/models" "Update|$DIR/update.sh" "Log|$LOG")
 if [ "$UPDATE" = 1 ]; then card "ComfyUI is up to date" "$green" "${rows[@]}"; else card "ComfyUI is ready" "$green" "${rows[@]}"; fi
 echo
 

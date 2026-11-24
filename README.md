@@ -36,6 +36,12 @@ Then start it with:
 
 ComfyUI opens at http://127.0.0.1:8188. The first install downloads a few GB, mostly PyTorch.
 
+### RunPod and other cloud GPUs
+
+On RunPod, start from RunPod's own ComfyUI template and add the AusBoss nodes from the Manager. It's ready in a few minutes instead of building everything on the pod. See [docs/runpod.md](docs/runpod.md).
+
+On other cloud machines the installer works as usual, including inside containers that only have root.
+
 ## What you get
 
 ```
