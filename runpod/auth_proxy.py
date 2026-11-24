@@ -111,10 +111,15 @@ def upstream_url(request):
     return url, query
 
 
+LOGIN_MAX_BYTES = 4096
+
 async def login(request):
     if request.method == "GET":
         nxt = html.escape(safe_next(request.query.get("next", "/")))
         return web.Response(text=PAGE.replace("{error}", "").replace("{next}", nxt), content_type="text/html")
+    # The app has no body limit (uploads stream through), so the login form gets its own before it is read.
+    if request.content_length is None or request.content_length > LOGIN_MAX_BYTES:
+        return web.Response(status=413, text="Login form too large.")
     form = await request.post()
     nxt = safe_next(str(form.get("next", "/")))
     if not token_ok(str(form.get("token", ""))):

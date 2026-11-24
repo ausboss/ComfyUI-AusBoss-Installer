@@ -6,9 +6,11 @@ Run with --help, or <command> --help, for the options.
 """
 
 import argparse
+import getpass
 import json
 import os
 import random
+import socket
 import sys
 import time
 import urllib.error
@@ -16,7 +18,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-CLIENT_ID = os.environ.get("COMFYUI_CLIENT_ID") or str(uuid.uuid5(uuid.NAMESPACE_DNS, "comfyui-pod-%s-%s" % (os.uname().nodename, os.getuid())))
+CLIENT_ID = os.environ.get("COMFYUI_CLIENT_ID") or str(uuid.uuid5(uuid.NAMESPACE_DNS, "comfyui-pod-%s-%s" % (socket.gethostname(), getpass.getuser())))
 SEED_INPUTS = ("seed", "noise_seed")
 
 
@@ -250,12 +252,22 @@ def download(client, summary, dest, include_temp):
         if os.path.exists(path):
             continue
         os.makedirs(folder, exist_ok=True)
-        with client.get("/view?" + query, raw=True, timeout=600) as resp, open(path, "wb") as fh:
-            while True:
-                chunk = resp.read(1 << 20)
-                if not chunk:
-                    break
-                fh.write(chunk)
+        # Written beside the final name and renamed only when complete, so an interrupted transfer is retried.
+        part = path + ".part"
+        try:
+            with client.get("/view?" + query, raw=True, timeout=600) as resp, open(part, "wb") as fh:
+                expected = resp.headers.get("Content-Length")
+                while True:
+                    chunk = resp.read(1 << 20)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+            if expected is not None and os.path.getsize(part) != int(expected):
+                raise ComfyError({"incomplete_download": f["filename"], "bytes": os.path.getsize(part), "expected": int(expected)})
+            os.replace(part, path)
+        finally:
+            if os.path.exists(part):
+                os.remove(part)
     summary["saved"] = saved
     return summary
 
