@@ -79,7 +79,7 @@ PROXY_PID=$!
 
 cd "$COMFY" || exit 1
 while [ "$STOPPING" = 0 ]; do
-    mapfile -t EXTRA < <(grep -v '^[[:space:]]*#' "$ARGS_FILE" | xargs -n1 2>/dev/null)
+    mapfile -t EXTRA < <(grep -v '^[[:space:]]*#' "$ARGS_FILE" | xargs -r -n1 2>/dev/null)
     echo "Starting ComfyUI ${EXTRA[*]}"
     python main.py --listen 127.0.0.1 --port "$COMFY_PORT" \
         --base-directory "$DATA" --temp-directory /tmp \

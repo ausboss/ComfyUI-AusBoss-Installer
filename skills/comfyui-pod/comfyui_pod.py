@@ -16,7 +16,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-CLIENT_ID = str(uuid.uuid4())
+CLIENT_ID = os.environ.get("COMFYUI_CLIENT_ID") or str(uuid.uuid5(uuid.NAMESPACE_DNS, "comfyui-pod-%s-%s" % (os.uname().nodename, os.getuid())))
 SEED_INPUTS = ("seed", "noise_seed")
 
 
@@ -32,7 +32,8 @@ class Client:
         self.token = token
 
     def request(self, method, path, body=None, headers=None, raw=False, timeout=60):
-        headers = dict(headers or {})
+        # RunPod's proxy (Cloudflare) answers 403 to urllib's default User-Agent.
+        headers = {"User-Agent": "comfyui-pod/1.0", **(headers or {})}
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
         if isinstance(body, (dict, list)):

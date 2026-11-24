@@ -47,6 +47,12 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8188/system_stats)" = 401
           curl -sf -H "Authorization: Bearer smoke-test-token-123456" localhost:8188/system_stats
           docker rm -f smoke
+          # With no extra options ComfyUI must get no stray empty argument.
+          docker run -d --name noargs -e COMFYUI_TOKEN=smoke-test-token-123456 image:test
+          sleep 20
+          docker logs noargs 2>&1 | tail -20
+          ! docker logs noargs 2>&1 | grep -q "No such file or directory: ''"
+          docker rm -f noargs
       - name: Push
         if: github.event_name != 'pull_request'
         run: |
