@@ -18,7 +18,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-CLIENT_ID = os.environ.get("COMFYUI_CLIENT_ID") or str(uuid.uuid5(uuid.NAMESPACE_DNS, "comfyui-pod-%s-%s" % (socket.gethostname(), getpass.getuser())))
+CLIENT_ID = os.environ.get("COMFYUI_CLIENT_ID") or str(uuid.uuid5(uuid.NAMESPACE_DNS, "comfyui-pod-%s-%s" % (socket.gethostname(), os.getuid() if hasattr(os, "getuid") else getpass.getuser())))
 SEED_INPUTS = ("seed", "noise_seed")
 
 
