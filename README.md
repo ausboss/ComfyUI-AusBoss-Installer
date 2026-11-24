@@ -38,7 +38,7 @@ ComfyUI opens at http://127.0.0.1:8188. The first install downloads a few GB, mo
 
 ### RunPod and other cloud GPUs
 
-On RunPod, start from RunPod's own ComfyUI template and add the AusBoss nodes from the Manager. It's ready in a few minutes instead of building everything on the pod. See [docs/runpod.md](docs/runpod.md).
+On RunPod, use the AusBoss image, which has ComfyUI and both AusBoss packs built in and puts a token in front of ComfyUI, or start from RunPod's own ComfyUI template and add the AusBoss nodes from the Manager. Either is ready in minutes instead of building everything on the pod. See [docs/runpod.md](docs/runpod.md).
 
 On other cloud machines the installer works as usual, including inside containers that only have root.
 
