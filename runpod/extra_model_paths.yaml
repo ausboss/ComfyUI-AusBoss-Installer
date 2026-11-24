@@ -1,0 +1,5 @@
+# The node packs baked into the image. ComfyUI also loads packs from
+# /workspace/ausboss/custom_nodes, which is where ComfyUI-Manager installs new ones.
+baked:
+  base_path: /opt/comfyui-baked
+  custom_nodes: custom_nodes
