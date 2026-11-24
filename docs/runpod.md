@@ -34,7 +34,7 @@ Do this once; every pod after that is two clicks.
 ### Start a pod
 
 1. **Pods → Deploy**, pick a GPU, **Change Template**, and pick yours. Use the `cuda13.0` template for a Blackwell card.
-2. **Deploy On-Demand.** The first start downloads the image (a few minutes on a host that hasn't seen it); after that ComfyUI is up about 15 seconds after the pod.
+2. **Deploy On-Demand.** The first start on a host downloads the image, which takes a few minutes. ComfyUI then starts right away, with nothing to install.
 3. **Connect → HTTP Service → :8188**, paste your token, and you're in. The browser remembers it for 30 days.
 
 If you deploy without `COMFYUI_TOKEN`, the pod makes a token, prints it in the pod's logs and saves it in `/workspace/ausboss/.comfyui_token`.
@@ -72,7 +72,7 @@ Jobs from the agent and from you in the browser go into the same queue, so you c
 
 RunPod's official ComfyUI template already has ComfyUI, PyTorch and ComfyUI-Manager built in, so a pod is up in about a minute, and the AusBoss packs install on top of it from the Manager in a couple more.
 
-## 1. Start a pod
+### 1. Start a pod
 
 1. In the RunPod console, open **Pods** and click **Deploy**.
 2. Pick a GPU. 24 GB (RTX 4090, RTX 3090, A5000) is enough for images and most video workflows; take 48 GB or more (A40, L40S, RTX 6000 Ada) for the bigger video models.
@@ -81,11 +81,11 @@ RunPod's official ComfyUI template already has ComfyUI, PyTorch and ComfyUI-Mana
    - [**ComfyUI - CUDA 13**](https://console.runpod.io/hub/template/2lv7ev3wfp) for Blackwell (RTX 5090, RTX PRO 6000, B200).
 4. Click **Deploy On-Demand**.
 
-## 2. Open ComfyUI
+### 2. Open ComfyUI
 
 When the pod shows **Running**, click **Connect**, then **HTTP Service → :8188**. If you get a 502 page, ComfyUI is still starting; reload in a few seconds.
 
-## 3. Install the AusBoss nodes
+### 3. Install the AusBoss nodes
 
 1. Click **Manager** in the top bar, then **Custom Nodes Manager**.
 2. Search for **AusBoss**.
@@ -94,18 +94,18 @@ When the pod shows **Running**, click **Connect**, then **HTTP Service → :8188
 
 Double-click the canvas and search for **AusBoss** to check the nodes are there.
 
-## 4. Get models
+### 4. Get models
 
 Add a **Model Downloader 🆎** node, paste a Civitai or Hugging Face link and click **Download**; it saves the file into the right folder on the pod. Workflows with a **Workflow Note** show a download button on each model row, so opening an AusBoss workflow and clicking down the list gets everything it needs.
 
 Downloads run on the pod at datacenter speed, not through your browser.
 
-## 5. When you're done
+### 5. When you're done
 
 - **Stop** the pod to pause it. You stop paying for the GPU but keep paying a little for its disk, and your models and nodes are still there next time.
 - **Terminate** the pod to delete it and everything on it. Download the outputs you want to keep first. They're in `/workspace/runpod-slim/ComfyUI/output`, and the template's file browser (**Connect → :8080**) can download them.
 
-## Good to know
+### Good to know
 
 - **The ComfyUI link has no password.** Anyone with the `…proxy.runpod.net` address can use your pod and your GPU time. Don't post it.
 - **Picking the wrong template for the GPU** is the most common first-run failure. A Blackwell card needs the CUDA 13 template.
