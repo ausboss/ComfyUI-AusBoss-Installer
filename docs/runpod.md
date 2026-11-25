@@ -76,14 +76,15 @@ RunPod's official ComfyUI template already has ComfyUI, PyTorch and ComfyUI-Mana
 
 1. In the RunPod console, open **Pods** and click **Deploy**.
 2. Pick a GPU. 24 GB (RTX 4090, RTX 3090, A5000) is enough for images and most video workflows; take 48 GB or more (A40, L40S, RTX 6000 Ada) for the bigger video models.
-3. Click **Change Template** and pick the one that matches the GPU:
-   - [**ComfyUI - CUDA 12.8**](https://console.runpod.io/hub/template/cw3nka7d08) for everything before Blackwell (RTX 4090, 3090, A40, L40S, A100, H100).
-   - [**ComfyUI - CUDA 13**](https://console.runpod.io/hub/template/2lv7ev3wfp) for Blackwell (RTX 5090, RTX PRO 6000, B200).
-4. Click **Deploy On-Demand**.
+3. Click **Change Template**, search for **ComfyUI** and pick the one marked **Runpod** (the official one). In its version list pick **0.44.0** with **CUDA 12.8**.
+4. Set a password: click **Set overrides**, put your own value in **COMFYUI_PASSWORD**, and click **Save**. Check that the template now shows a **Has overrides** badge. The yellow "Set a password" warning stays up even after you've set one, so go by the badge. If you close the window without **Save**, your password is dropped and the pod starts with the template's default password.
+5. Click **Deploy On-Demand**. If RunPod says there are no longer any instances available, refresh the page and pick the GPU again; the first pick can carry stale memory and CPU limits from the GPU card.
 
 ### 2. Open ComfyUI
 
-When the pod shows **Running**, click **Connect**, then **HTTP Service → :8188**. If you get a 502 page, ComfyUI is still starting; reload in a few seconds.
+When the pod shows **Running**, click **Connect**, then the **ComfyUI** link on port 8188. That link signs you in. If you open the pod's address some other way, the browser asks for a username and password: any username works, and the password is your **COMFYUI_PASSWORD**. If you get a 502 page, ComfyUI is still starting; reload in a few seconds.
+
+ComfyUI 0.44.0 sometimes leaves an invisible layer over the page after it loads, so clicks do nothing. Press **Escape** once and the page works.
 
 ### 3. Install the AusBoss nodes
 
@@ -108,7 +109,7 @@ Downloads run on the pod at datacenter speed, not through your browser.
 
 ### Good to know
 
-- **The ComfyUI link has no password.** Anyone with the `…proxy.runpod.net` address can use your pod and your GPU time. Don't post it.
-- **Picking the wrong template for the GPU** is the most common first-run failure. A Blackwell card needs the CUDA 13 template.
+- **The password is the only lock.** Anyone with the `…proxy.runpod.net` address and the password can use your pod and your GPU time, so don't keep the default and don't post the link. The **Connect** link has the password in it.
+- **Jobs over HTTP** take the same password as `Authorization: Bearer <password>`, so the [comfyui-pod skill](../skills/comfyui-pod/SKILL.md) works on this template too.
 - **ComfyUI lives in `/workspace/runpod-slim/ComfyUI`**, custom nodes in `custom_nodes` under it. Extra startup options go in `/workspace/runpod-slim/comfyui_args.txt`, one per line.
 - **The template can ship an older ComfyUI.** If a node complains about the ComfyUI version, click **Manager → Update ComfyUI**, then restart.
