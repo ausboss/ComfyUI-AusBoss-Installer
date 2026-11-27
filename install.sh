@@ -6,18 +6,24 @@
 #   bash install.sh --update     update an install (update.sh runs this)
 #   options: --yes  don't ask, just install     --device nvidia|amd|intel|cpu
 #            --no-shortcut  no app menu entry   --plain  no full-screen view
+#            --agent-tools  also add comfy-agent, so your own AI agent (Claude Code, Codex,
+#                           pi, OpenClaw...) can make pictures and videos with this ComfyUI
 #   env:     TORCH_INDEX=cu130|cu128|rocm7.1|xpu|cpu   pick the PyTorch build yourself
+#            AGENT_TOOLS=1  the same as --agent-tools (works with an older update.sh too)
 set -uo pipefail
 
-VERSION="1.0.1"
+VERSION="1.1.0"
 REPO="ausboss/ComfyUI-AusBoss-Installer"
 # Released files, not main, so an install only ever gets a tagged version.
 RAW="https://github.com/$REPO/releases/latest/download"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
+# comfy-agent, added with --agent-tools. It has no releases yet, so this follows its main branch.
+AGENT_REPO="${COMFY_AGENT_REPO:-https://github.com/ausboss/comfy-agent}"
+AGENT_REF="${COMFY_AGENT_REF:-main}"
 NEED_GB=15
 
 # ------------------------------------------------------------------ options --
-DIR=""; UPDATE=0; YES=0; DEVICE="auto"; SHORTCUT=1; PLAIN=0
+DIR=""; UPDATE=0; YES=0; DEVICE="auto"; SHORTCUT=1; PLAIN=0; AGENT="${AGENT_TOOLS:-0}"
 ARGS=("$@")
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -27,7 +33,8 @@ while [ $# -gt 0 ]; do
         --device=*) DEVICE="${1#*=}" ;;
         --no-shortcut) SHORTCUT=0 ;;
         --plain) PLAIN=1 ;;
-        -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --agent-tools) AGENT=1 ;;
+        -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) echo "Unknown option: $1 (try --help)"; exit 1 ;;
         *) DIR="$1" ;;
     esac
@@ -444,6 +451,15 @@ DIR="$(cd "$DIR" && pwd)"
 mkdir -p "$DIR/tools"
 LOG="$DIR/install.log"
 echo "=== $(date '+%F %T') ComfyUI AusBoss Installer v$VERSION (update=$UPDATE)" >> "$LOG"
+# Once added, comfy-agent stays: every update updates it too.
+case "$AGENT" in 1|yes|true) AGENT=1 ;; *) AGENT=0 ;; esac
+[ -d "$DIR/comfy-agent/.git" ] && AGENT=1
+if [ "$AGENT" = 1 ]; then
+    STEPS=("${STEPS[@]:0:6}" "Agent tools" "${STEPS[@]:6}")
+    WEIGHT=("${WEIGHT[@]:0:6}" 2 "${WEIGHT[@]:6}")
+    EXPECT=("${EXPECT[@]:0:6}" 10 "${EXPECT[@]:6}")
+    STATE+=(todo); DETAIL+=(""); WARNED+=(0)
+fi
 
 MISSING=()
 for t in git curl; do command -v "$t" >/dev/null || MISSING+=("$t"); done
@@ -506,6 +522,7 @@ FREE_GB=$(( $(df -Pk "$DIR" | awk 'NR==2{print $4}') / 1048576 ))
 splash "v$VERSION $DOT Linux"
 echo
 rows=("Folder|$DIR" "GPU|${GPU_NAME:-unknown}" "|$GPU_INFO" "PyTorch|$TORCH_INDEX build" "Python|$PYTHON_VERSION" "Free space|$FREE_GB GB")
+[ "$AGENT" = 1 ] && rows+=("Agent tools|comfy-agent: skill + MCP for your own agent")
 if [ "$UPDATE" = 1 ]; then card "Updating" "$teal" "${rows[@]}"; else card "Ready to install" "$teal" "${rows[@]}"; fi
 PRE=()
 [ "$DEVICE" = cpu ] && PRE+=("No supported graphics card found. ComfyUI works on the CPU, but slowly.")
@@ -650,6 +667,131 @@ fi
 ok "${PACKS[*]:-none}"
 finish_step
 
+# ------------------------------------------------------------- agent tools --
+# comfy-agent lets the person's own AI agent use this ComfyUI: a skill (SKILL.md plus a
+# one-file CLI) and a 3-tool MCP server. Only with --agent-tools, or once it is installed.
+# No Pi and no local model here. It runs on this install's own Python, so the agent
+# needs no system Python.
+KIT="$DIR/comfy-agent"; LINKED=(); SKIPPED=()
+# Link the skill into an agent's skills folder, only for agents that are set up here, and
+# never over something already there that isn't this install's own link.
+agent_link() {
+    local home="$1" skills="$2" label="$3" to cur
+    [ -d "$home" ] || return 0
+    to="$skills/comfy-agent"
+    if [ -L "$to" ] || [ -e "$to" ]; then
+        cur="$(readlink -f "$to" 2>/dev/null || true)"
+        if [ "$cur" = "$(readlink -f "$KIT")" ]; then LINKED+=("$label"); else SKIPPED+=("$label already has $to"); fi
+        return 0
+    fi
+    if mkdir -p "$skills" 2>/dev/null && ln -s "$KIT" "$to" 2>/dev/null; then
+        LINKED+=("$label")
+        grep -qxF "$to" "$DIR/tools/agent-links.txt" 2>/dev/null || echo "$to" >> "$DIR/tools/agent-links.txt"
+    else SKIPPED+=("$label: could not write $skills"); fi
+}
+joined() { local out="" x; for x in "$@"; do out+="${out:+, }$x"; done; echo "${out:-none}"; }
+# The MCP setup for common clients, with this install's paths filled in.
+write_agent_setup() {
+    local py="$PY" cli="$KIT/comfy_agent.py" f="$DIR/AGENT-SETUP.md"
+    cat > "$f.new" <<EOF
+# Use this ComfyUI from your own AI agent
+
+comfy-agent is in \`$KIT\`. Start ComfyUI first (\`$DIR/start.sh\`), then ask your agent
+for something, like *"Make 4 pictures of a red fox asleep in the snow."*
+Your pictures and videos are saved in \`$KIT/outputs\`.
+
+There are two ways to connect an agent. Pick one; you don't need both.
+
+## 1. As a skill (Claude Code, Codex, pi, OpenClaw)
+
+The agent reads \`SKILL.md\` and runs the \`comfy_agent.py\` command line. This route can also
+install the nodes and models a recipe needs (it asks you first) and turn your own workflows
+into recipes.
+
+The installer linked the skill for: $(joined "${LINKED[@]+"${LINKED[@]}"}").
+$(for x in "${SKIPPED[@]+"${SKIPPED[@]}"}"; do echo "Not linked: $x, so it was left as it is."; done)
+For another agent, link the folder into its skills folder:
+
+\`\`\`bash
+ln -s "$KIT" ~/.claude/skills/comfy-agent        # Claude Code
+ln -s "$KIT" ~/.agents/skills/comfy-agent        # Codex, OpenClaw
+ln -s "$KIT" ~/.pi/agent/skills/comfy-agent      # pi
+\`\`\`
+
+Or open your agent in \`$KIT\`: it reads \`AGENTS.md\` / \`CLAUDE.md\` there.
+
+## 2. As an MCP server (any MCP client)
+
+Three tools: \`recipes\`, \`generate\`, \`results\`. Every client needs the same command:
+
+    $py $cli mcp
+
+Claude Code:
+
+\`\`\`bash
+claude mcp add comfy -- $py $cli mcp
+\`\`\`
+
+Codex (\`~/.codex/config.toml\`; the ChatGPT app's Codex side reads it too):
+
+\`\`\`toml
+[mcp_servers.comfy]
+command = "$py"
+args = ["$cli", "mcp"]
+\`\`\`
+
+Claude Desktop (\`~/.config/Claude/claude_desktop_config.json\`, then restart the app),
+Cursor (\`~/.cursor/mcp.json\`) and most other apps:
+
+\`\`\`json
+{"mcpServers": {"comfy": {"command": "$py", "args": ["$cli", "mcp"]}}}
+\`\`\`
+
+pi (\`~/.pi/agent/mcp.json\`):
+
+\`\`\`json
+{"mcpServers": {"comfy": {"command": "$py", "args": ["$cli", "mcp"], "exposure": "direct"}}}
+\`\`\`
+
+ChatGPT or Claude on your phone need more setup, and it puts your GPU on the internet:
+read \`$KIT/docs/chat-apps.md\` first.
+
+## Updating and removing
+
+\`$DIR/update.sh\` updates comfy-agent with everything else. To remove it, delete
+\`$KIT\` and the skill links listed in \`$DIR/tools/agent-links.txt\`, and remove
+\`comfy\` from your agent's MCP settings.
+EOF
+    mv -f "$f.new" "$f"
+}
+if [ "$AGENT" = 1 ]; then
+    stage "Agent tools"
+    if [ ! -d "$KIT/.git" ]; then
+        task "Downloading comfy-agent" git clone --progress --single-branch --branch "$AGENT_REF" "$AGENT_REPO" "$KIT" \
+            || warn "Could not download comfy-agent. Run update.sh to try again."
+    elif [ "$UPDATE" = 1 ]; then
+        task "Updating comfy-agent" git -C "$KIT" pull --ff-only \
+            || warn "Could not update comfy-agent (local changes?). Kept the current version."
+    fi
+    if [ -f "$KIT/comfy_agent.py" ]; then
+        # it reads its recipes without ComfyUI running, so this checks the kit and the Python
+        if task "Checking comfy-agent" "$PY" "$KIT/comfy_agent.py" list; then
+            agent_link "$HOME/.claude" "$HOME/.claude/skills" "Claude Code"
+            # Codex and OpenClaw both read ~/.agents/skills
+            if [ -d "$HOME/.codex" ] || [ -d "$HOME/.openclaw" ] || [ -d "$HOME/.agents" ]; then
+                agent_link "$HOME" "$HOME/.agents/skills" "Codex/OpenClaw"
+            fi
+            agent_link "$HOME/.pi" "$HOME/.pi/agent/skills" "pi"
+            for s in "${SKIPPED[@]+"${SKIPPED[@]}"}"; do echo "Skill not linked: $s" >> "$LOG"; done
+            write_agent_setup
+            ok "comfy-agent $(git -C "$KIT" rev-parse --short HEAD 2>/dev/null) $DOT skill: $(joined "${LINKED[@]+"${LINKED[@]}"}") $DOT AGENT-SETUP.md"
+        else
+            warn "comfy-agent did not start (see install.log)"
+        fi
+    fi
+    finish_step
+fi
+
 # ------------------------------------------------------------------ finish --
 stage "Finishing"
 if [ -f "$SCRIPT_DIR/install.sh" ] && [ "$SCRIPT_DIR" != "$DIR" ]; then cp "$SCRIPT_DIR/install.sh" "$DIR/install.sh.new"
@@ -721,6 +863,12 @@ echo
 rows=("Took|$((T / 60))m $((T % 60))s" "Start|$DIR/start.sh" "Open|$OPEN_URL" "Models|$DIR/ComfyUI/models" "Update|$DIR/update.sh" "Log|$LOG")
 if [ "$UPDATE" = 1 ]; then card "ComfyUI is up to date" "$green" "${rows[@]}"; else card "ComfyUI is ready" "$green" "${rows[@]}"; fi
 echo
+if [ "$AGENT" = 1 ] && [ -f "$DIR/AGENT-SETUP.md" ]; then
+    card "Your agent can use it" "$teal" "Skill|$(joined "${LINKED[@]+"${LINKED[@]}"}" | sed "s/^none$/not linked, see Setup/")" "Tools|$KIT" "Setup|$DIR/AGENT-SETUP.md"
+    echo "  ${muted}Claude Code, as an MCP server:${reset}"
+    echo "    claude mcp add comfy -- $PY $KIT/comfy_agent.py mcp"
+    echo
+fi
 
 if [ "$YES" = 0 ] && [ -t 0 ] && [ "$UPDATE" = 0 ]; then
     read -r -p "  ${ink}Start ComfyUI now? ${bold}[Y/n]${reset} " a
