@@ -1,13 +1,17 @@
 # ComfyUI AusBoss Installer for Windows
 # Puts a portable ComfyUI, its own Python, ComfyUI-Manager and the AusBoss nodes in one folder.
 # Run it through install.bat, or:
-#   powershell -ExecutionPolicy Bypass -File install.ps1 [-Dir C:\AI\ComfyUI-AusBoss] [-Update] [-Yes] [-TorchIndex cu128] [-NoShortcut] [-Plain]
+#   powershell -ExecutionPolicy Bypass -File install.ps1 [-Dir C:\AI\ComfyUI-AusBoss] [-Update] [-Yes] [-TorchIndex cu128] [-NoShortcut] [-Plain] [-AgentTools]
+#   -AgentTools  also add comfy-agent, so your own AI agent (Claude Code, Codex, pi, OpenClaw...)
+#                can make pictures and videos with this ComfyUI. set AGENT_TOOLS=1 does the same,
+#                and works with an older Update ComfyUI.bat too.
 param(
     [string]$Dir = "",
     [switch]$Update,
     [switch]$Yes,
     [switch]$NoShortcut,
     [switch]$Plain,
+    [switch]$AgentTools,
     [string]$TorchIndex = $env:TORCH_INDEX,
     [string]$PythonVersion = "3.12"
 )
@@ -15,11 +19,15 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-$Version = "1.0.1"
+$Version = "1.1.0"
 $Repo = "ausboss/ComfyUI-AusBoss-Installer"
 # Released files, not main, so an install only ever gets a tagged version.
 $Raw = "https://github.com/$Repo/releases/latest/download"
 $NeedGB = 15
+# comfy-agent, added with -AgentTools. It has no releases yet, so this follows its main branch.
+$AgentRepo = if ($env:COMFY_AGENT_REPO) { $env:COMFY_AGENT_REPO } else { "https://github.com/ausboss/comfy-agent" }
+$AgentRef = if ($env:COMFY_AGENT_REF) { $env:COMFY_AGENT_REF } else { "main" }
+if ($env:AGENT_TOOLS -match '^(1|yes|true)$') { $AgentTools = [switch]$true }
 
 # An update first gets the newest released installer, so a fix to the
 # installer itself reaches installs made with an older one. Only a newer
@@ -44,6 +52,7 @@ if ($Update -and -not $env:AUSBOSS_INSTALLER_FRESH) {
                 if ($Yes) { $again += "-Yes" }
                 if ($NoShortcut) { $again += "-NoShortcut" }
                 if ($Plain) { $again += "-Plain" }
+                if ($AgentTools) { $again += "-AgentTools" }
                 if ($TorchIndex) { $again += @("-TorchIndex", $TorchIndex) }
                 if ($PythonVersion -ne "3.12") { $again += @("-PythonVersion", $PythonVersion) }
                 & powershell -NoProfile -ExecutionPolicy Bypass -File $self @again
@@ -433,6 +442,15 @@ $Tools = Join-Path $Dir "tools"
 New-Item -ItemType Directory -Force -Path $Tools | Out-Null
 $script:Log = Join-Path $Dir "install.log"
 Add-Content $script:Log "=== $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ComfyUI AusBoss Installer v$Version (update=$Update)"
+# Once added, comfy-agent stays: every update updates it too.
+$Kit = Join-Path $Dir "comfy-agent"
+if (Test-Path (Join-Path $Kit ".git")) { $AgentTools = [switch]$true }
+if ($AgentTools) {
+    $Steps = @($Steps[0..5]) + "Agent tools" + @($Steps[6..($Steps.Count - 1)])
+    $Weight = @($Weight[0..5]) + 2 + @($Weight[6..($Weight.Count - 1)])
+    $Expect = @($Expect[0..5]) + 10 + @($Expect[6..($Expect.Count - 1)])
+    $script:State = @("todo") * $Steps.Count; $script:Detail = @("") * $Steps.Count; $script:Warned = @($false) * $Steps.Count
+}
 
 # Keep other Python setups (conda, pyenv, venvs) out of this install
 foreach ($v in "PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "CONDA_PREFIX", "UV_PYTHON") { Remove-Item "Env:$v" -ErrorAction SilentlyContinue }
@@ -466,6 +484,7 @@ $FreeGB = [int]((Get-PSDrive ($Dir.Substring(0, 1))).Free / 1GB)
 Splash "v$Version $Dot Windows"
 Write-Host ""
 $rows = @("Folder|$Dir", "GPU|$GpuName", "|$GpuInfo", "PyTorch|$TorchIndex build", "Python|$PythonVersion", "Free space|$FreeGB GB")
+if ($AgentTools) { $rows += "Agent tools|comfy-agent: skill + MCP for your own agent" }
 if ($Update) { Card "Updating" $Teal $rows } else { Card "Ready to install" $Teal $rows }
 $pre = @()
 if ($Device -eq "cpu") { $pre += "No supported graphics card found. ComfyUI works on the CPU, but slowly." }
@@ -646,6 +665,139 @@ if ($TorchIndex -ne "cpu") {
 }
 if ($packs.Count) { Ok ($packs -join " ") } else { Ok "none" }
 
+# ------------------------------------------------------------- agent tools --
+# comfy-agent lets the person's own AI agent use this ComfyUI: a skill (SKILL.md plus a
+# one-file CLI) and a 3-tool MCP server. Only with -AgentTools, or once it is installed.
+# No Pi and no local model here. It runs on this install's own Python, so the agent
+# needs no system Python.
+$script:Linked = @(); $script:Skipped = @()
+# Link the skill into an agent's skills folder, only for agents that are set up here, and
+# never over something already there that isn't this install's own link. A junction needs
+# no administrator rights.
+function Link-Skill($agentHome, $skills, $label) {
+    if (-not (Test-Path $agentHome)) { return }
+    $to = Join-Path $skills "comfy-agent"
+    $item = Get-Item $to -Force -ErrorAction SilentlyContinue
+    if ($item) {
+        $target = @($item.Target) | Select-Object -First 1
+        if ($target -and ($target.TrimEnd("\") -ieq $Kit)) { $script:Linked += $label }
+        else { $script:Skipped += "$label already has $to" }
+        return
+    }
+    try {
+        New-Item -ItemType Directory -Force -Path $skills | Out-Null
+        New-Item -ItemType Junction -Path $to -Target $Kit -ErrorAction Stop | Out-Null
+        $script:Linked += $label
+        $list = Join-Path $Tools "agent-links.txt"
+        if (-not ((Test-Path $list) -and (Get-Content $list) -contains $to)) { Add-Content $list $to }
+    } catch { $script:Skipped += "${label}: could not write $skills" }
+}
+function Joined($items) { if (@($items).Count) { return (@($items) -join ", ") } return "none" }
+# The MCP setup for common clients, with this install's paths filled in.
+function Write-AgentSetup {
+    $cli = Join-Path $Kit "comfy_agent.py"
+    $jpy = $py -replace '\\', '\\'; $jcli = $cli -replace '\\', '\\'
+    $skipped = ($script:Skipped | ForEach-Object { "Not linked: $_, so it was left as it is." }) -join "`n"
+    $f = Join-Path $Dir "AGENT-SETUP.md"
+    $text = @"
+# Use this ComfyUI from your own AI agent
+
+comfy-agent is in ``$Kit``. Start ComfyUI first (``$Dir\Start ComfyUI.bat``), then ask your agent
+for something, like *"Make 4 pictures of a red fox asleep in the snow."*
+Your pictures and videos are saved in ``$Kit\outputs``.
+
+There are two ways to connect an agent. Pick one; you don't need both. On Windows the MCP
+server is the safer pick: it runs on this install's own Python.
+
+## 1. As a skill (Claude Code, Codex, pi, OpenClaw)
+
+The agent reads ``SKILL.md`` and runs the ``comfy_agent.py`` command line. This route can also
+install the nodes and models a recipe needs (it asks you first) and turn your own workflows
+into recipes. It runs ``python comfy_agent.py``, so it needs Python on your PATH. If you don't
+have it, tell your agent once to use ``$py`` instead.
+
+The installer linked the skill for: $(Joined $script:Linked).
+$skipped
+For another agent, link the folder into its skills folder (in PowerShell):
+
+``````powershell
+New-Item -ItemType Junction -Path "`$HOME\.claude\skills\comfy-agent" -Target "$Kit"     # Claude Code
+New-Item -ItemType Junction -Path "`$HOME\.agents\skills\comfy-agent" -Target "$Kit"     # Codex, OpenClaw
+New-Item -ItemType Junction -Path "`$HOME\.pi\agent\skills\comfy-agent" -Target "$Kit"   # pi
+``````
+
+Or open your agent in ``$Kit``: it reads ``AGENTS.md`` / ``CLAUDE.md`` there.
+
+## 2. As an MCP server (any MCP client)
+
+Three tools: ``recipes``, ``generate``, ``results``. Every client needs the same command:
+
+    "$py" "$cli" mcp
+
+Claude Code:
+
+``````
+claude mcp add comfy -- "$py" "$cli" mcp
+``````
+
+Codex (``%USERPROFILE%\.codex\config.toml``; the ChatGPT app's Codex side reads it too):
+
+``````toml
+[mcp_servers.comfy]
+command = '$py'
+args = ['$cli', "mcp"]
+``````
+
+Claude Desktop (``%APPDATA%\Claude\claude_desktop_config.json``, then restart the app),
+Cursor (``%USERPROFILE%\.cursor\mcp.json``) and most other apps:
+
+``````json
+{"mcpServers": {"comfy": {"command": "$jpy", "args": ["$jcli", "mcp"]}}}
+``````
+
+pi (``%USERPROFILE%\.pi\agent\mcp.json``):
+
+``````json
+{"mcpServers": {"comfy": {"command": "$jpy", "args": ["$jcli", "mcp"], "exposure": "direct"}}}
+``````
+
+ChatGPT or Claude on your phone need more setup, and it puts your GPU on the internet:
+read ``$Kit\docs\chat-apps.md`` first.
+
+## Updating and removing
+
+``Update ComfyUI.bat`` updates comfy-agent with everything else. To remove it, delete
+``$Kit`` and the skill links listed in ``$Tools\agent-links.txt``, and remove
+``comfy`` from your agent's MCP settings.
+"@
+    Set-Content $f -Value $text -Encoding UTF8
+}
+if ($AgentTools) {
+    Stage "Agent tools"
+    if (-not (Test-Path (Join-Path $Kit ".git"))) {
+        if (-not (Task "Downloading comfy-agent" $git @("clone", "--progress", "--single-branch", "--branch", $AgentRef, $AgentRepo, $Kit))) {
+            Warn "Could not download comfy-agent. Run Update ComfyUI.bat to try again."
+        }
+    } elseif ($Update) {
+        if (-not (Task "Updating comfy-agent" $git @("-C", $Kit, "pull", "--ff-only"))) { Warn "Could not update comfy-agent (local changes?). Kept the current version." }
+    }
+    if (Test-Path (Join-Path $Kit "comfy_agent.py")) {
+        # it reads its recipes without ComfyUI running, so this checks the kit and the Python
+        if (Task "Checking comfy-agent" $py @((Join-Path $Kit "comfy_agent.py"), "list")) {
+            Link-Skill (Join-Path $HOME ".claude") (Join-Path $HOME ".claude\skills") "Claude Code"
+            # Codex and OpenClaw both read ~/.agents/skills
+            if ((Test-Path (Join-Path $HOME ".codex")) -or (Test-Path (Join-Path $HOME ".openclaw")) -or (Test-Path (Join-Path $HOME ".agents"))) {
+                Link-Skill $HOME (Join-Path $HOME ".agents\skills") "Codex/OpenClaw"
+            }
+            Link-Skill (Join-Path $HOME ".pi") (Join-Path $HOME ".pi\agent\skills") "pi"
+            foreach ($x in $script:Skipped) { Add-Content $script:Log "Skill not linked: $x" }
+            try { Write-AgentSetup } catch { Warn "Could not write AGENT-SETUP.md: $_" }
+            Ok "comfy-agent $(& $git -C $Kit rev-parse --short HEAD) $Dot skill: $(Joined $script:Linked) $Dot AGENT-SETUP.md"
+        } else { Warn "comfy-agent did not start (see install.log)" }
+    }
+    EndStep
+}
+
 # ------------------------------------------------------------------ finish --
 Stage "Finishing"
 $src = Join-Path $ScriptDir "install.ps1"
@@ -711,6 +863,13 @@ Write-Host ""
 $rows = @(("Took|{0}m {1}s" -f [int][Math]::Floor($t.TotalMinutes), $t.Seconds), "Start|$Dir\Start ComfyUI.bat", "Open|http://127.0.0.1:8188", "Models|$Dir\ComfyUI\models", "Update|$Dir\Update ComfyUI.bat", "Log|$script:Log")
 if ($Update) { Card "ComfyUI is up to date" $Green $rows } else { Card "ComfyUI is ready" $Green $rows }
 Write-Host ""
+if ($AgentTools -and (Test-Path (Join-Path $Dir "AGENT-SETUP.md"))) {
+    $skill = Joined $script:Linked; if ($skill -eq "none") { $skill = "not linked, see Setup" }
+    Card "Your agent can use it" $Teal @("Skill|$skill", "Tools|$Kit", "Setup|$Dir\AGENT-SETUP.md")
+    Say @("  Claude Code, as an MCP server:", $Muted)
+    Write-Host "    claude mcp add comfy -- `"$py`" `"$(Join-Path $Kit 'comfy_agent.py')`" mcp"
+    Write-Host ""
+}
 
 if (-not $Update -and -not $Yes -and -not [Console]::IsInputRedirected) {
     Say @("  Start ComfyUI now? ", $Ink, "[Y/n] ", $Bright)

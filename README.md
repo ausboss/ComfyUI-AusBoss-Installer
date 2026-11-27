@@ -66,6 +66,26 @@ ComfyUI-AusBoss/
 
 **From `nodes.txt`:** add a line (`<git url> <folder name>`) and run the update script. Packs listed there are updated with everything else each time you run it.
 
+## Use it from your own AI agent (optional)
+
+If you use an AI agent such as Claude Code, Codex, pi or OpenClaw, the installer can also add
+[comfy-agent](https://github.com/ausboss/comfy-agent), so the agent can make pictures and videos with
+this ComfyUI from plain English. It's off unless you ask for it:
+
+```bash
+bash install.sh --agent-tools          # Linux
+install.bat -AgentTools                # Windows
+```
+
+On an install you already have, run the update with `AGENT_TOOLS=1`: `AGENT_TOOLS=1 ./update.sh` on Linux,
+or `set AGENT_TOOLS=1` and then `Update ComfyUI.bat` on Windows.
+
+It adds a `comfy-agent` folder next to ComfyUI, links it as a skill for each of Claude Code, Codex/OpenClaw
+(`~/.agents/skills`) and pi that is set up on the computer, and writes **`AGENT-SETUP.md`** with
+copy-paste lines for using it as an MCP server instead (Claude Code, Codex, Claude Desktop, Cursor, pi).
+It never replaces a skill folder you already have, and it doesn't change any agent's settings. It
+doesn't install a local model. Updates keep it up to date.
+
 ## Picking the GPU build
 
 The installer looks at your GPU and picks PyTorch for you:
@@ -93,6 +113,7 @@ Other options:
 | `--yes` | `-Yes` | Don't ask anything, just install |
 | `--device nvidia\|amd\|intel\|cpu` | | Use this GPU type instead of the one found |
 | `--no-shortcut` | `-NoShortcut` | No app menu entry (Linux) or desktop shortcut (Windows) |
+| `--agent-tools` | `-AgentTools` | Also add comfy-agent for your own AI agent (see above) |
 | `bash install.sh ~/AI/ComfyUI` | `install.bat -Dir C:\AI\ComfyUI` | Install into another folder |
 
 Everything the installer does is written to `install.log` in the install folder.
@@ -113,7 +134,7 @@ Updating also gets the newest installer first, and moves AusBoss folders from an
 
 ## Uninstall
 
-Delete the `ComfyUI-AusBoss` folder. Nothing is installed anywhere else, apart from uv's own folder if you already had uv.
+Delete the `ComfyUI-AusBoss` folder. Nothing is installed anywhere else, apart from uv's own folder if you already had uv. If you added the agent tools, also delete the skill links listed in `tools/agent-links.txt`.
 
 ## AusBoss
 
